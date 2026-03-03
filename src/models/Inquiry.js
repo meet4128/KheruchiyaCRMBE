@@ -1,0 +1,114 @@
+const mongoose = require('mongoose');
+
+// ─── Sub-documents for clean schema organization ────────────────────────────
+
+/** Phone/Reference number format: { countryCode, number } */
+const contactNumberSchema = new mongoose.Schema(
+  {
+    countryCode: { type: String, required: true, trim: true },
+    number: { type: String, required: true, trim: true },
+  },
+  { _id: false }
+);
+
+/** Flight segment: from/to, departure, traveller count, class */
+const flightSegmentSchema = new mongoose.Schema(
+  {
+    from: {
+      code: { type: String, required: true, trim: true },
+      city: { type: String, required: true, trim: true },
+    },
+    to: {
+      code: { type: String, required: true, trim: true },
+      city: { type: String, required: true, trim: true },
+    },
+    departureDate: { type: Date, required: true },
+    travellerCount: { type: Number, required: true, min: 1 },
+    travelClass: { type: String, required: true, trim: true },
+  },
+  { _id: false }
+);
+
+/** Air Ticket booking details — embedded sub-document */
+const airTicketSchema = new mongoose.Schema(
+  {
+    bookingType: {
+      type: String,
+      required: true,
+      enum: ['ONE_WAY', 'ROUND_TRIP', 'MULTI_CITY'],
+    },
+    flightSegments: {
+      type: [flightSegmentSchema],
+      required: true,
+      validate: {
+        validator: (v) => Array.isArray(v) && v.length >= 1,
+        message: 'At least one flight segment is required',
+      },
+    },
+    typeOfVisa: {
+      type: String,
+      enum: ['Visitor Visa', 'Student Visa', 'PR', 'Work Permit'],
+      default: undefined,
+    },
+    remark: { type: String, required: true, trim: true },
+  },
+  { _id: false }
+);
+
+/** Checklist item — assigned user, due date, priority, category */
+const checklistItemSchema = new mongoose.Schema(
+  {
+    user: { type: String, required: true, trim: true },
+    dueDate: { type: Date, required: true },
+    priority: { type: String, required: true, trim: true },
+    category: { type: String, required: true, trim: true },
+    inLoop: { type: Boolean, default: false },
+    repeat: { type: mongoose.Schema.Types.Mixed },
+  },
+  { _id: true }
+);
+
+// ─── Main Inquiry Schema ─────────────────────────────────────────────────────
+
+const inquirySchema = new mongoose.Schema(
+  {
+    // Inquiry Form fields
+    title: { type: String, required: true, trim: true },
+    phoneNumber: { type: contactNumberSchema, required: true },
+    fullName: { type: String, required: true, trim: true },
+    email: { type: String, trim: true, lowercase: true },
+    typeOfClient: { type: String, required: true, trim: true },
+    address: { type: String, required: true, trim: true },
+    referenceNumber: { type: contactNumberSchema, required: true },
+    referenceName: { type: String, required: true, trim: true },
+    clientBehaviour: { type: String, required: true, trim: true },
+    typeOfBooking: { type: String, required: true, trim: true },
+    // Audit
+    createdBy: { type: String, required: true, trim: true },
+    // Air Ticket Form (booking details) — embedded sub-document
+    airTicket: { type: airTicketSchema },
+    // Checklist array
+    checklist: {
+      type: [checklistItemSchema],
+      default: [],
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+// ─── Performance indexes (industry standard) ─────────────────────────────────
+
+/** Email: lookup / search by contact */
+inquirySchema.index({ email: 1 }, { sparse: true });
+
+/** Reference number: compound unique for duplicate detection & fast lookups */
+inquirySchema.index(
+  { 'referenceNumber.countryCode': 1, 'referenceNumber.number': 1 },
+  { unique: true }
+);
+
+const Inquiry = mongoose.model('Inquiry', inquirySchema);
+
+module.exports = Inquiry;
