@@ -1,10 +1,11 @@
 const mongoose = require('mongoose');
+const { messages } = require('../locales');
 
 const connectDB = async () => {
   const options = {
     maxPoolSize: 10,
     minPoolSize: 2,
-    serverSelectionTimeoutMS: 5000,
+    serverSelectionTimeoutMS: 10000,
   };
 
   try {
@@ -12,6 +13,17 @@ const connectDB = async () => {
     console.log(`[INFO] MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
     console.error('[ERROR] MongoDB connection failed:', error.message);
+    if (
+      error.message.includes('IP') ||
+      error.message.includes('whitelist') ||
+      error.message.includes('Network')
+    ) {
+      console.error(`\n[FIX] ${messages.db.fixNetworkAccess}`);
+      console.error(`  ${messages.db.fixStep1}`);
+      console.error(`  ${messages.db.fixStep2}`);
+      console.error(`  ${messages.db.fixStep3}`);
+      console.error(`  ${messages.db.fixStep4}\n`);
+    }
     process.exit(1);
   }
 };

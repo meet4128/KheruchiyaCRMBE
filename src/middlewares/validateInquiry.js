@@ -1,17 +1,16 @@
 const Joi = require('joi');
 const { INQUIRY_STATUS_VALUES } = require('../constants/inquiryStatus');
+const { messages } = require('../locales');
+
+const t = messages.validation.inquiry;
 
 // ─── Reusable schemas ──────────────────────────────────────────────────────
-
+// Phone/Reference number format: { countryCode, number }
 const contactNumberSchema = Joi.object({
   countryCode: Joi.string().required().trim(),
-  number: Joi.string()
-    .pattern(/^\d+$/)
-    .min(6)
-    .required()
-    .messages({
-      'string.pattern.base': 'Phone/Reference number must contain digits only',
-    }),
+  number: Joi.string().pattern(/^\d+$/).min(6).required().messages({
+    'string.pattern.base': t.phoneDigitsOnly,
+  }),
 });
 
 const flightSegmentSchema = Joi.object({
@@ -29,16 +28,14 @@ const flightSegmentSchema = Joi.object({
 });
 
 const airTicketSchema = Joi.object({
-  bookingType: Joi.string()
-    .valid('ONE_WAY', 'ROUND_TRIP', 'MULTI_CITY')
-    .required(),
+  bookingType: Joi.string().valid('ONE_WAY', 'ROUND_TRIP', 'MULTI_CITY').required(),
   flightSegments: Joi.array()
     .items(flightSegmentSchema)
     .required()
     .when(Joi.ref('bookingType'), {
       is: Joi.valid('ROUND_TRIP', 'MULTI_CITY'),
       then: Joi.array().items(flightSegmentSchema).min(2).required().messages({
-        'array.min': 'ROUND_TRIP and MULTI_CITY require at least 2 flight segments',
+        'array.min': t.flightSegmentsMin,
       }),
       otherwise: Joi.array().items(flightSegmentSchema).min(1).required(),
     }),
@@ -62,38 +59,38 @@ const checklistItemSchema = Joi.object({
 
 const inquiryCreateSchema = Joi.object({
   title: Joi.string().required().trim().messages({
-    'string.empty': 'Title is required',
+    'string.empty': t.titleRequired,
   }),
   phoneNumber: contactNumberSchema.required().messages({
-    'object.base': 'Phone Number is required',
+    'object.base': t.phoneNumberRequired,
   }),
   fullName: Joi.string().required().trim().messages({
-    'string.empty': 'Full Name is required',
+    'string.empty': t.fullNameRequired,
   }),
   email: Joi.string()
     .email({ tlds: { allow: false } })
     .optional()
     .allow('')
     .messages({
-      'string.email': 'Please provide a valid email',
+      'string.email': t.emailInvalid,
     }),
   typeOfClient: Joi.string().required().trim().messages({
-    'string.empty': 'Type of Client is required',
+    'string.empty': t.typeOfClientRequired,
   }),
   address: Joi.string().required().trim().messages({
-    'string.empty': 'Address is required',
+    'string.empty': t.addressRequired,
   }),
   referenceNumber: contactNumberSchema.required().messages({
-    'object.base': 'Reference Number is required',
+    'object.base': t.referenceNumberRequired,
   }),
   referenceName: Joi.string().required().trim().messages({
-    'string.empty': 'Reference Name is required',
+    'string.empty': t.referenceNameRequired,
   }),
   clientBehaviour: Joi.string().required().trim().messages({
-    'string.empty': 'Client Behaviour is required',
+    'string.empty': t.clientBehaviourRequired,
   }),
   typeOfBooking: Joi.string().required().trim().messages({
-    'string.empty': 'Type of Booking is required',
+    'string.empty': t.typeOfBookingRequired,
   }),
   status: Joi.string()
     .valid(...INQUIRY_STATUS_VALUES)
@@ -119,7 +116,7 @@ const validateInquiry = (req, res, next) => {
     }));
     return res.status(422).json({
       status: 'fail',
-      data: { message: 'Validation Failed', errors },
+      data: { message: messages.validation.failed, errors },
     });
   }
 

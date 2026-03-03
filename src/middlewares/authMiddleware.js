@@ -1,4 +1,5 @@
-const { verifyToken } = require('../utils/jwtUtils');
+const { verifyAccessToken } = require('../utils/jwtUtils');
+const { messages } = require('../locales');
 
 /**
  * Authentication middleware for protecting routes with JWT Bearer tokens.
@@ -10,24 +11,22 @@ const authMiddleware = (req, res, next) => {
   if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({
       status: 'fail',
-      data: { message: 'Authentication required' },
+      data: { message: messages.auth.authenticationRequired },
     });
   }
 
   const token = header.split(' ')[1];
 
   try {
-    const decoded = verifyToken(token);
+    const decoded = verifyAccessToken(token);
     req.user = decoded;
     next();
-  } catch (err) {
+  } catch (_err) {
     return res.status(401).json({
       status: 'fail',
-      data: { message: 'Invalid or expired token' },
+      data: { message: messages.auth.invalidOrExpiredToken },
     });
   }
 };
 
 module.exports = authMiddleware;
-
-

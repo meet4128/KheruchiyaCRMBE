@@ -1,6 +1,7 @@
 const Inquiry = require('../models/Inquiry');
 const AppError = require('../utils/AppError');
 const { INQUIRY_STATUS_VALUES } = require('../constants/inquiryStatus');
+const { messages } = require('../locales');
 
 /** Allowed sort fields to prevent query injection */
 const ALLOWED_SORT_FIELDS = [
@@ -21,7 +22,7 @@ const createInquiry = async (payload) => {
   });
 
   if (existing) {
-    throw new AppError('Reference number already exists', 409);
+    throw new AppError(messages.errors.referenceNumberExists, 409);
   }
 
   const inquiry = await Inquiry.create(payload);
@@ -53,9 +54,7 @@ const getAllInquiries = async (queryParams = {}) => {
   const rawSort = String(sort || '').trim();
   const direction = rawSort.startsWith('-') ? -1 : 1;
   const field = rawSort.replace(/^-/, '').trim() || 'createdAt';
-  const safeSort = ALLOWED_SORT_FIELDS.includes(field)
-    ? { [field]: direction }
-    : { createdAt: -1 };
+  const safeSort = ALLOWED_SORT_FIELDS.includes(field) ? { [field]: direction } : { createdAt: -1 };
 
   // Base filter
   const filter = {};
@@ -79,18 +78,12 @@ const getAllInquiries = async (queryParams = {}) => {
       .slice(0, 100)
       .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const searchRegex = new RegExp(sanitized, 'i');
-    filter.$or = [
-      { fullName: searchRegex },
-      { 'phoneNumber.number': searchRegex },
-    ];
+    filter.$or = [{ fullName: searchRegex }, { 'phoneNumber.number': searchRegex }];
   }
 
   const query = Inquiry.find(filter).skip(skip).limit(limitNum).sort(safeSort);
 
-  const [items, totalItems] = await Promise.all([
-    query.exec(),
-    Inquiry.countDocuments(filter),
-  ]);
+  const [items, totalItems] = await Promise.all([query.exec(), Inquiry.countDocuments(filter)]);
 
   const totalPages = Math.ceil(totalItems / limitNum) || 1;
 

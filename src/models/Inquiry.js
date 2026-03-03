@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { INQUIRY_STATUS_VALUES } = require('../constants/inquiryStatus');
+const { messages } = require('../locales');
 
 // ─── Sub-documents for clean schema organization ────────────────────────────
 
@@ -43,7 +44,7 @@ const airTicketSchema = new mongoose.Schema(
       required: true,
       validate: {
         validator: (v) => Array.isArray(v) && v.length >= 1,
-        message: 'At least one flight segment is required',
+        message: messages.model.flightSegmentRequired,
       },
     },
     typeOfVisa: {
