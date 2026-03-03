@@ -1,6 +1,9 @@
 const Inquiry = require('../models/Inquiry');
 const AppError = require('../utils/AppError');
 
+/** Allowed sort fields to prevent query injection */
+const ALLOWED_SORT_FIELDS = ['createdAt', 'updatedAt', 'fullName', 'typeOfBooking', 'typeOfClient'];
+
 const createInquiry = async (payload) => {
   const { referenceNumber } = payload;
 
@@ -38,6 +41,14 @@ const getAllInquiries = async (queryParams = {}) => {
   const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
   const skip = (pageNum - 1) * limitNum;
 
+  // Sanitize sort: allowlist to prevent query injection
+  const rawSort = String(sort || '').trim();
+  const direction = rawSort.startsWith('-') ? -1 : 1;
+  const field = rawSort.replace(/^-/, '').trim() || 'createdAt';
+  const safeSort = ALLOWED_SORT_FIELDS.includes(field)
+    ? { [field]: direction }
+    : { createdAt: -1 };
+
   // Base filter
   const filter = {};
 
@@ -54,14 +65,18 @@ const getAllInquiries = async (queryParams = {}) => {
   }
 
   if (search) {
-    const searchRegex = new RegExp(search, 'i');
+    // Escape special regex chars to prevent ReDoS
+    const sanitized = String(search)
+      .slice(0, 100)
+      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchRegex = new RegExp(sanitized, 'i');
     filter.$or = [
       { fullName: searchRegex },
       { 'phoneNumber.number': searchRegex },
     ];
   }
 
-  const query = Inquiry.find(filter).skip(skip).limit(limitNum).sort(sort);
+  const query = Inquiry.find(filter).skip(skip).limit(limitNum).sort(safeSort);
 
   const [items, totalItems] = await Promise.all([
     query.exec(),
