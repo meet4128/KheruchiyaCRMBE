@@ -20,6 +20,10 @@ module.exports = {
       flightSegmentsMin: 'ROUND_TRIP and MULTI_CITY require at least 2 flight segments',
     },
     failed: 'Validation Failed',
+    inquiryQuery: {
+      invalidPageLimit: 'Page and limit must be at least 1',
+      limitMax: 'Limit must not exceed 100',
+    },
   },
 
   // ─── Auth messages ───────────────────────────────────────────────────────

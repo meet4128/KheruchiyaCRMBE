@@ -63,6 +63,8 @@ app.use(
 );
 
 // API routes
+const healthRoutes = require('./routes/healthRoutes');
+app.use('/api/v1/health', healthRoutes);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/inquiries', inquiryRoutes);
 

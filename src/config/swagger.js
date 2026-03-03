@@ -157,6 +157,7 @@ const options = {
       },
     },
     tags: [
+      { name: 'Health', description: 'Liveness and readiness' },
       { name: 'Auth', description: 'Authentication endpoints' },
       { name: 'Inquiries', description: 'Inquiry management' },
     ],
@@ -168,6 +169,47 @@ const options = {
 const spec = {
   ...options.definition,
   paths: {
+    '/api/v1/health': {
+      get: {
+        tags: ['Health'],
+        summary: 'Health check',
+        description: 'Liveness probe - returns 200 if the server is up',
+        responses: {
+          200: {
+            description: 'Server is running',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        status: { type: 'string', example: 'ok' },
+                        timestamp: { type: 'string', format: 'date-time' },
+                        uptime: { type: 'number' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/v1/health/ready': {
+      get: {
+        tags: ['Health'],
+        summary: 'Readiness check',
+        description: 'Returns 200 if server and database are ready to accept traffic',
+        responses: {
+          200: { description: 'Ready (DB connected)' },
+          503: { description: 'Not ready (e.g. DB disconnected)' },
+        },
+      },
+    },
     '/api/v1/auth/login': {
       post: {
         tags: ['Auth'],
