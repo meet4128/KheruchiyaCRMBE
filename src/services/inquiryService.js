@@ -1,8 +1,16 @@
 const Inquiry = require('../models/Inquiry');
 const AppError = require('../utils/AppError');
+const { INQUIRY_STATUS_VALUES } = require('../constants/inquiryStatus');
 
 /** Allowed sort fields to prevent query injection */
-const ALLOWED_SORT_FIELDS = ['createdAt', 'updatedAt', 'fullName', 'typeOfBooking', 'typeOfClient'];
+const ALLOWED_SORT_FIELDS = [
+  'createdAt',
+  'updatedAt',
+  'fullName',
+  'typeOfBooking',
+  'typeOfClient',
+  'status',
+];
 
 const createInquiry = async (payload) => {
   const { referenceNumber } = payload;
@@ -60,7 +68,8 @@ const getAllInquiries = async (queryParams = {}) => {
     filter.typeOfClient = typeOfClient;
   }
 
-  if (status) {
+  // Status filter: only allow valid enum values
+  if (status && INQUIRY_STATUS_VALUES.includes(status)) {
     filter.status = status;
   }
 

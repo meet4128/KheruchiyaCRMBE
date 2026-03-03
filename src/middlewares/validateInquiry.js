@@ -1,4 +1,5 @@
 const Joi = require('joi');
+const { INQUIRY_STATUS_VALUES } = require('../constants/inquiryStatus');
 
 // ─── Reusable schemas ──────────────────────────────────────────────────────
 
@@ -94,6 +95,10 @@ const inquiryCreateSchema = Joi.object({
   typeOfBooking: Joi.string().required().trim().messages({
     'string.empty': 'Type of Booking is required',
   }),
+  status: Joi.string()
+    .valid(...INQUIRY_STATUS_VALUES)
+    .optional()
+    .default('PENDING'),
   airTicket: airTicketSchema,
   checklist: Joi.array().items(checklistItemSchema).optional().default([]),
 });

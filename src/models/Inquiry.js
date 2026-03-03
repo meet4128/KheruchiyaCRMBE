@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { INQUIRY_STATUS_VALUES } = require('../constants/inquiryStatus');
 
 // ─── Sub-documents for clean schema organization ────────────────────────────
 
@@ -83,6 +84,11 @@ const inquirySchema = new mongoose.Schema(
     referenceName: { type: String, required: true, trim: true },
     clientBehaviour: { type: String, required: true, trim: true },
     typeOfBooking: { type: String, required: true, trim: true },
+    status: {
+      type: String,
+      enum: INQUIRY_STATUS_VALUES,
+      default: 'PENDING',
+    },
     // Audit
     createdBy: { type: String, required: true, trim: true },
     // Air Ticket Form (booking details) — embedded sub-document
@@ -108,6 +114,9 @@ inquirySchema.index(
   { 'referenceNumber.countryCode': 1, 'referenceNumber.number': 1 },
   { unique: true }
 );
+
+/** Status: for filter performance on GET /inquiries */
+inquirySchema.index({ status: 1 });
 
 const Inquiry = mongoose.model('Inquiry', inquirySchema);
 
