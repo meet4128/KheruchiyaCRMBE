@@ -6,7 +6,6 @@ const inquiryRoutes = require('./routes/inquiryRoutes');
 const authRoutes = require('./routes/authRoutes');
 const globalErrorHandler = require('./middlewares/globalErrorHandler');
 const AppError = require('./utils/AppError');
-
 const app = express();
 const PORT = process.env.PORT || 5000;
 
