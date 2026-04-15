@@ -75,12 +75,11 @@ const options = {
         },
         ChecklistItem: {
           type: 'object',
-          required: ['user', 'dueDate', 'priority', 'category'],
           properties: {
-            user: { type: 'string' },
-            dueDate: { type: 'string', format: 'date-time' },
-            priority: { type: 'string' },
-            category: { type: 'string' },
+            user: { type: 'string', nullable: true },
+            dueDate: { type: 'string', format: 'date-time', nullable: true },
+            priority: { type: 'string', nullable: true },
+            category: { type: 'string', nullable: true },
             inLoop: { type: 'boolean', default: false },
             repeat: { type: 'object' },
           },

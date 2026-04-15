@@ -50,6 +50,7 @@ const airTicketSchema = new mongoose.Schema(
     typeOfVisa: {
       type: String,
       enum: ['Visitor Visa', 'Student Visa', 'PR', 'Work Permit'],
+      set: (v) => (v === '' || v === null ? undefined : v),
       default: undefined,
     },
     remark: { type: String, required: true, trim: true },
@@ -60,10 +61,10 @@ const airTicketSchema = new mongoose.Schema(
 /** Checklist item — assigned user, due date, priority, category */
 const checklistItemSchema = new mongoose.Schema(
   {
-    user: { type: String, required: true, trim: true },
-    dueDate: { type: Date, required: true },
-    priority: { type: String, required: true, trim: true },
-    category: { type: String, required: true, trim: true },
+    user: { type: String, trim: true, default: '' },
+    dueDate: { type: Date, set: (v) => (v === '' || v === null ? undefined : v) },
+    priority: { type: String, trim: true, default: '' },
+    category: { type: String, trim: true, default: '' },
     inLoop: { type: Boolean, default: false },
     repeat: { type: mongoose.Schema.Types.Mixed },
   },

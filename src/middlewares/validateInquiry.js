@@ -42,15 +42,16 @@ const airTicketSchema = Joi.object({
   typeOfVisa: Joi.string()
     .valid('Visitor Visa', 'Student Visa', 'PR', 'Work Permit')
     .optional()
-    .allow(''),
+    .allow('')
+    .empty(''),
   remark: Joi.string().required().trim(),
 }).optional(); // Required when present; omit for inquiry-only submissions
 
 const checklistItemSchema = Joi.object({
-  user: Joi.string().required().trim(),
-  dueDate: Joi.date().required(),
-  priority: Joi.string().required().trim(),
-  category: Joi.string().required().trim(),
+  user: Joi.string().trim().optional().allow(''),
+  dueDate: Joi.date().optional().allow('').empty(''),
+  priority: Joi.string().trim().optional().allow(''),
+  category: Joi.string().trim().optional().allow(''),
   inLoop: Joi.boolean().optional().default(false),
   repeat: Joi.object().optional(),
 });
