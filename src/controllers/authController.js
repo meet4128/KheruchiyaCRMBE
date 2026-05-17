@@ -7,6 +7,8 @@ const {
 } = require('../utils/jwtUtils');
 const { messages } = require('../locales');
 
+const ALLOWED_LOGIN_ROLES = ['admin', 'sales', 'purchase', 'user'];
+
 /**
  * Dev / simple login endpoint for issuing access + refresh tokens.
  * In production, real auth (password verification, user store) must be implemented.
@@ -20,8 +22,19 @@ const login = (req, res) => {
   }
 
   const { userId = 'dev-user', email = 'dev@example.com', role = 'user' } = req.body || {};
+  const normalizedRole = String(role).trim().toLowerCase();
 
-  const userPayload = { id: userId, email, role };
+  if (!ALLOWED_LOGIN_ROLES.includes(normalizedRole)) {
+    return res.status(422).json({
+      status: 'fail',
+      data: {
+        message: messages.auth.invalidRole,
+        allowedRoles: ALLOWED_LOGIN_ROLES,
+      },
+    });
+  }
+
+  const userPayload = { id: userId, email, role: normalizedRole };
   const { accessToken, refreshToken, expiresIn } = generateTokenPair(userPayload);
 
   res.status(200).json({

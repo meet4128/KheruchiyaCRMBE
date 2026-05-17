@@ -31,7 +31,14 @@ const globalErrorHandler = (err, req, res, _next) => {
 
   if (err.code === 11000) {
     error.statusCode = 409;
-    error.message = messages.errors.referenceNumberExists;
+    const kv = err.keyValue || {};
+    if (Object.prototype.hasOwnProperty.call(kv, 'employeeId')) {
+      error.message = messages.errors.employeeIdExists;
+    } else if (Object.prototype.hasOwnProperty.call(kv, 'personalEmail')) {
+      error.message = messages.errors.personalEmailExists;
+    } else {
+      error.message = messages.errors.referenceNumberExists;
+    }
   }
 
   if (err.name === 'CastError') {

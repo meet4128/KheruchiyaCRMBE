@@ -24,6 +24,49 @@ module.exports = {
       invalidPageLimit: 'Page and limit must be at least 1',
       limitMax: 'Limit must not exceed 100',
     },
+    whatsapp: {
+      toRequired: 'Recipient phone (to) is required',
+      toInvalid: 'Recipient must be E.164 digits only, no + sign (10–15 digits)',
+      textRequired: 'Message text is required',
+      textTooLong: 'Message text must be at most 4096 characters',
+    },
+    member: {
+      fullNameRequired: 'Full name is required',
+      personalEmailRequired: 'Personal email is required',
+      personalEmailInvalid: 'Please provide a valid personal email',
+      phoneNumberRequired: 'Phone number is required',
+      homePhoneNumberRequired: 'Home phone number is required',
+      officePhoneNumberRequired: 'Office phone number is required',
+      phoneDigitsOnly: 'Phone number must contain digits only',
+      addressLine1Required: 'Address is required',
+      zipCodeRequired: 'Zip code is required',
+      cityRequired: 'City is required',
+      firstNameRequired: 'First name is required',
+      lastNameRequired: 'Last name is required',
+      employeeIdRequired: 'Employee ID is required',
+      designationRequired: 'Designation is required',
+      employmentStatusRequired: 'Employment status is required',
+      employmentStatusInvalid: 'Employment status is invalid',
+      dateOfJoiningRequired: 'Date of joining is required',
+      departmentRolesRequired: 'At least one department role is required',
+      departmentRolesMin: 'At least one department role is required',
+      departmentRoleDepartmentRequired: 'Department is required for each role row',
+      departmentRoleRoleRequired: 'Role is required for each role row',
+      genderInvalid: 'Gender is invalid',
+      maritalStatusInvalid: 'Marital status is invalid',
+      documentUrlInvalid:
+        'Document must be a valid https URL or a path returned from POST /members/document-uploads (/uploads/members/...)',
+      documentMimeInvalid: 'Only PDF or image files are allowed (PDF, JPEG, PNG, WebP, GIF)',
+      documentTooLarge: 'Document file is too large',
+      documentUploadFailed: 'Document upload failed',
+      documentUploadAtLeastOne: 'Upload at least one file (aadharCard, panCard, or cancelCheque)',
+      multipartJsonInvalid: 'Invalid JSON in multipart field',
+      updateAtLeastOneField: 'At least one field is required to update a member',
+    },
+    memberQuery: {
+      invalidPageLimit: 'Page and limit must be at least 1',
+      limitMax: 'Limit must not exceed 100',
+    },
   },
 
   // ─── Auth messages ───────────────────────────────────────────────────────
@@ -31,15 +74,20 @@ module.exports = {
     authenticationRequired: 'Authentication required',
     invalidOrExpiredToken: 'Invalid or expired token',
     refreshTokenRequired: 'Refresh token is required',
+    invalidRole: 'Role must be one of: admin, sales, purchase, user',
     invalidRefreshToken: 'Invalid refresh token',
     invalidOrExpiredRefreshToken: 'Invalid or expired refresh token',
     loginNotImplemented:
       'Login not implemented. Implement proper authentication before deploying to production.',
+    insufficientRole: 'You do not have permission to perform this action',
   },
 
   // ─── Error messages (global, service, model) ─────────────────────────────
   errors: {
     referenceNumberExists: 'Reference number already exists',
+    employeeIdExists: 'Employee ID already exists',
+    personalEmailExists: 'Personal email is already in use',
+    memberNotFound: 'Member not found',
     somethingWentWrong: 'Something went wrong',
     invalidIdOrFormat: 'Invalid ID or data format',
   },
@@ -70,5 +118,6 @@ module.exports = {
   // ─── Mongoose model validation ───────────────────────────────────────────
   model: {
     flightSegmentRequired: 'At least one flight segment is required',
+    memberDepartmentRolesRequired: 'At least one department role is required',
   },
 };

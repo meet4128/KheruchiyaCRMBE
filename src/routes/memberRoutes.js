@@ -1,0 +1,45 @@
+const express = require('express');
+const memberController = require('../controllers/memberController');
+const validateMember = require('../middlewares/validateMember');
+const validateMemberUpdate = require('../middlewares/validateMemberUpdate');
+const validateMemberQuery = require('../middlewares/validateMemberQuery');
+const authMiddleware = require('../middlewares/authMiddleware');
+const requireRoles = require('../middlewares/requireRoles');
+const { uploadMemberDocuments } = require('../middlewares/uploadMemberDocuments');
+const parseMemberMultipartBody = require('../middlewares/parseMemberMultipartBody');
+
+const router = express.Router();
+
+router.post(
+  '/document-uploads',
+  authMiddleware,
+  requireRoles('admin'),
+  uploadMemberDocuments,
+  memberController.uploadMemberDocuments
+);
+router.post(
+  '/',
+  authMiddleware,
+  requireRoles('admin'),
+  parseMemberMultipartBody,
+  validateMember,
+  memberController.createMember
+);
+router.patch(
+  '/:id',
+  authMiddleware,
+  requireRoles('admin'),
+  parseMemberMultipartBody,
+  validateMemberUpdate,
+  memberController.updateMember
+);
+router.delete('/:id', authMiddleware, requireRoles('admin'), memberController.deleteMember);
+router.get(
+  '/',
+  authMiddleware,
+  requireRoles('admin'),
+  validateMemberQuery,
+  memberController.getMembers
+);
+
+module.exports = router;
