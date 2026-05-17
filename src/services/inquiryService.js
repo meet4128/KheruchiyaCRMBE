@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const Inquiry = require('../models/Inquiry');
-const Amendment = require('../models/Amendment');
+const amendmentService = require('./amendmentService');
 const AppError = require('../utils/AppError');
 const { INQUIRY_STATUS_VALUES } = require('../constants/inquiryStatus');
 const { messages } = require('../locales');
@@ -108,7 +108,7 @@ const getInquiryById = async (id) => {
     throw new AppError(messages.errors.inquiryNotFound, 404);
   }
 
-  const amendments = await Amendment.find({ inquiryId: id }).sort({ createdAt: -1 }).lean();
+  const amendments = await amendmentService.listAmendmentsByInquiry(id);
 
   return {
     ...inquiry,

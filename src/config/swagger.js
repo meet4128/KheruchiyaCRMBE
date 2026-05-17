@@ -266,6 +266,14 @@ const options = {
             createdAt: { type: 'string', format: 'date-time' },
           },
         },
+        AmendmentNote: {
+          type: 'object',
+          properties: {
+            text: { type: 'string' },
+            createdBy: { type: 'string' },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
         AmendmentMessage: {
           type: 'object',
           properties: {
@@ -761,7 +769,8 @@ const spec = {
       get: {
         tags: ['Inquiries'],
         summary: 'Get inquiry by ID',
-        description: 'Returns inquiry detail with embedded `amendments[]` list (newest first).',
+        description:
+          'Returns inquiry detail with `amendments[]` metadata only (newest first). Load WhatsApp chat on card expand via `GET .../amendments/{amendmentId}/messages`; load notes via `GET .../amendments/{amendmentId}/notes`.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -859,6 +868,8 @@ const spec = {
       get: {
         tags: ['Amendments'],
         summary: 'List amendments for inquiry',
+        description:
+          'Amendment metadata only. Load chat via `GET .../amendments/{amendmentId}/messages` when a card is expanded.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -901,7 +912,8 @@ const spec = {
       get: {
         tags: ['Amendments'],
         summary: 'Get amendment by business ID',
-        description: 'Read-only amendment card (TAIR/TCAN/TBOOK id).',
+        description:
+          'Read-only amendment card metadata (TAIR/TCAN/TBOOK id). Use messages/notes endpoints for chat and notes.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -947,7 +959,8 @@ const spec = {
       get: {
         tags: ['Amendments'],
         summary: 'Get finalized amendment chat (read-only)',
-        description: 'Question & Answer history including text, document, and image messages.',
+        description:
+          'Call when the user expands an amendment card. Paginated Q&A (text, document, image) for a finalized amendment.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'inquiryId', in: 'path', required: true, schema: { type: 'string' } },

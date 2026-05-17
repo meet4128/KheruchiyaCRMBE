@@ -100,6 +100,14 @@ const listAmendmentsByInquiry = async (inquiryId) => {
   return Amendment.find({ inquiryId }).sort({ createdAt: -1 }).lean();
 };
 
+const assertAmendmentExists = async (inquiryId, amendmentId) => {
+  await loadInquiry(inquiryId);
+  const exists = await Amendment.exists({ inquiryId, amendmentId });
+  if (!exists) {
+    throw new AppError(messages.errors.amendmentNotFound, 404);
+  }
+};
+
 const getAmendment = async (inquiryId, amendmentId) => {
   await loadInquiry(inquiryId);
   const amendment = await Amendment.findOne({ inquiryId, amendmentId }).lean();
@@ -110,7 +118,7 @@ const getAmendment = async (inquiryId, amendmentId) => {
 };
 
 const getAmendmentMessages = async (inquiryId, amendmentId, queryParams = {}) => {
-  await getAmendment(inquiryId, amendmentId);
+  await assertAmendmentExists(inquiryId, amendmentId);
   const page = Math.max(parseInt(queryParams.page, 10) || 1, 1);
   const limit = Math.min(Math.max(parseInt(queryParams.limit, 10) || 50, 1), 100);
   const skip = (page - 1) * limit;
@@ -159,7 +167,7 @@ const getSessionMessages = async (inquiryId, sessionId, queryParams = {}) => {
 };
 
 const getAmendmentNotes = async (inquiryId, amendmentId) => {
-  await getAmendment(inquiryId, amendmentId);
+  await assertAmendmentExists(inquiryId, amendmentId);
   return AmendmentNote.find({ inquiryId, amendmentId }).sort({ createdAt: 1 }).lean();
 };
 

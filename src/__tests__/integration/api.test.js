@@ -257,7 +257,7 @@ describe('Inquiries', () => {
     expect(inquiryService.getAllInquiries).toHaveBeenCalled();
   });
 
-  it('GET /api/v1/inquiries/:id returns 200 with embedded amendments', async () => {
+  it('GET /api/v1/inquiries/:id returns 200 with amendment metadata', async () => {
     inquiryService.getInquiryById.mockResolvedValue({
       _id: '507f1f77bcf86cd799439011',
       fullName: 'Hardik',
@@ -908,5 +908,6 @@ describe('Amendments', () => {
       .set('Authorization', `Bearer ${salesToken}`);
     expect(res.status).toBe(200);
     expect(res.body.data.amendments).toHaveLength(1);
+    expect(res.body.data.amendments[0].questionAndAnswer).toBeUndefined();
   });
 });
