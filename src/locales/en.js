@@ -29,6 +29,11 @@ module.exports = {
       toInvalid: 'Recipient must be E.164 digits only, no + sign (10–15 digits)',
       textRequired: 'Message text is required',
       textTooLong: 'Message text must be at most 4096 characters',
+      peerPhoneInvalid: 'Peer phone must be E.164 digits only, no + sign (10–15 digits)',
+    },
+    whatsappQuery: {
+      invalidPageLimit: 'Page and limit must be at least 1',
+      limitMax: 'Limit must not exceed 100',
     },
     member: {
       fullNameRequired: 'Full name is required',

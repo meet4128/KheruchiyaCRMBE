@@ -22,6 +22,8 @@ jest.mock('../../services/whatsappService', () => {
   return {
     ...actual,
     sendTextMessage: jest.fn(),
+    getConversations: jest.fn(),
+    getMessagesByPeer: jest.fn(),
   };
 });
 
@@ -40,6 +42,8 @@ beforeEach(() => {
   memberService.getMembers.mockReset();
   memberService.deleteMember.mockReset();
   whatsappService.sendTextMessage.mockReset();
+  whatsappService.getConversations.mockReset();
+  whatsappService.getMessagesByPeer.mockReset();
 });
 
 describe('Health', () => {
@@ -738,5 +742,70 @@ describe('WhatsApp send', () => {
       to: '919876543210',
       text: 'Flight option A',
     });
+  });
+});
+
+describe('WhatsApp conversations', () => {
+  let authToken;
+
+  beforeAll(async () => {
+    const loginRes = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ userId: 'wa-conv-user', email: 'waconv@test.com', role: 'user' });
+    authToken = loginRes.body.data.accessToken;
+  });
+
+  it('GET /api/v1/whatsapp/conversations returns 401 without token', async () => {
+    const res = await request(app).get('/api/v1/whatsapp/conversations');
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /api/v1/whatsapp/conversations returns 200 with paginated data', async () => {
+    whatsappService.getConversations.mockResolvedValue({
+      items: [
+        {
+          peerPhone: '919876543210',
+          messageCount: 2,
+          lastMessage: { text: 'Hi', direction: 'inbound' },
+        },
+      ],
+      page: 1,
+      limit: 10,
+      totalItems: 1,
+      totalPages: 1,
+    });
+    const res = await request(app)
+      .get('/api/v1/whatsapp/conversations')
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.items).toHaveLength(1);
+    expect(res.body.data.items[0].peerPhone).toBe('919876543210');
+  });
+
+  it('GET /api/v1/whatsapp/conversations/:peerPhone/messages returns 422 for invalid peer', async () => {
+    const res = await request(app)
+      .get('/api/v1/whatsapp/conversations/not-a-phone/messages')
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(res.status).toBe(422);
+  });
+
+  it('GET /api/v1/whatsapp/conversations/:peerPhone/messages returns 200', async () => {
+    whatsappService.getMessagesByPeer.mockResolvedValue({
+      peerPhone: '919876543210',
+      items: [{ wamid: 'wamid.1', text: 'Hello', direction: 'inbound' }],
+      page: 1,
+      limit: 50,
+      totalItems: 1,
+      totalPages: 1,
+    });
+    const res = await request(app)
+      .get('/api/v1/whatsapp/conversations/919876543210/messages')
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.peerPhone).toBe('919876543210');
+    expect(whatsappService.getMessagesByPeer).toHaveBeenCalledWith(
+      '919876543210',
+      expect.objectContaining({ page: 1, limit: 50 })
+    );
   });
 });

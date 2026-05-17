@@ -310,7 +310,10 @@ const options = {
       { name: 'Auth', description: 'Authentication endpoints' },
       { name: 'Inquiries', description: 'Inquiry management' },
       { name: 'Members', description: 'Member (HR) management' },
-      { name: 'WhatsApp', description: 'WhatsApp Cloud API webhook and agent send' },
+      {
+        name: 'WhatsApp',
+        description: 'WhatsApp Cloud API webhook, conversations, messages, and agent send',
+      },
     ],
   },
   apis: [], // We define paths inline below
@@ -944,12 +947,74 @@ const spec = {
         },
       },
     },
+    '/api/v1/whatsapp/conversations': {
+      get: {
+        tags: ['WhatsApp'],
+        summary: 'List WhatsApp conversations',
+        description:
+          'Returns one row per customer phone (`peerPhone`) with the latest message and counts. Messages are stored from inbound webhooks and outbound send.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
+          {
+            name: 'search',
+            in: 'query',
+            schema: { type: 'string', maxLength: 100 },
+            description: 'Filter peerPhone by substring (digits)',
+          },
+        ],
+        responses: {
+          200: { description: 'Paginated conversation list' },
+          401: { description: 'Authentication required' },
+          422: { description: 'Validation failed' },
+        },
+      },
+    },
+    '/api/v1/whatsapp/conversations/{peerPhone}/messages': {
+      get: {
+        tags: ['WhatsApp'],
+        summary: 'List messages in a conversation',
+        description:
+          'Returns paginated messages for a single `peerPhone` (E.164 digits, no +). Default sort is oldest first (`createdAt`).',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'peerPhone',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', pattern: '^\\d{10,15}$', example: '919876543210' },
+          },
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
+          },
+          {
+            name: 'sort',
+            in: 'query',
+            schema: { type: 'string', default: 'createdAt', example: '-createdAt' },
+            description: 'Sort field: createdAt or waTimestamp; prefix - for descending',
+          },
+        ],
+        responses: {
+          200: { description: 'Paginated message thread' },
+          401: { description: 'Authentication required' },
+          422: { description: 'Validation failed' },
+        },
+      },
+    },
     '/api/v1/whatsapp/send': {
       post: {
         tags: ['WhatsApp'],
         summary: 'Send WhatsApp text message',
         description:
-          'Sends a plain text message to a user via WhatsApp Cloud API (requires JWT). If Graph credentials are invalid/expired, response may be 502.',
+          'Sends a plain text message to a user via WhatsApp Cloud API (requires JWT). On success, the message is stored for the conversation list. If Graph credentials are invalid/expired, response may be 502.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
