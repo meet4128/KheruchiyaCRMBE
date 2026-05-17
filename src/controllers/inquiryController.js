@@ -27,4 +27,13 @@ const getInquiries = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { createInquiry, getInquiries };
+const getInquiryById = asyncHandler(async (req, res) => {
+  const inquiry = await inquiryService.getInquiryById(req.params.id);
+
+  res.status(200).json({
+    status: 'success',
+    data: { inquiry },
+  });
+});
+
+module.exports = { createInquiry, getInquiries, getInquiryById };

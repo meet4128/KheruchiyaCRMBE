@@ -7,8 +7,19 @@ const options = {
       description: 'Inquiry & Air Ticket API with JWT authentication',
     },
     servers: [
+      ...(process.env.PUBLIC_BASE_URL
+        ? [
+            {
+              url: String(process.env.PUBLIC_BASE_URL).replace(/\/$/, ''),
+              description: 'Public HTTPS (ngrok / deployed host)',
+            },
+          ]
+        : []),
       { url: '/', description: 'Current host (works with localhost or IP)' },
-      { url: `http://localhost:${process.env.PORT || 5000}`, description: 'Localhost' },
+      {
+        url: `http://localhost:${process.env.PORT || 5001}`,
+        description: 'Localhost',
+      },
     ],
     components: {
       securitySchemes: {
@@ -159,7 +170,7 @@ const options = {
         },
         WhatsappSendRequest: {
           type: 'object',
-          required: ['to', 'text'],
+          required: ['to'],
           properties: {
             to: {
               type: 'string',
@@ -167,7 +178,106 @@ const options = {
               description: 'WhatsApp ID / phone in E.164 form without + (digits only)',
               example: '919876543210',
             },
-            text: { type: 'string', maxLength: 4096, example: 'Your flight options...' },
+            type: {
+              type: 'string',
+              enum: ['text', 'document', 'image'],
+              default: 'text',
+            },
+            text: {
+              type: 'string',
+              maxLength: 4096,
+              description: 'Message body or document/image caption',
+              example: 'Your flight options...',
+            },
+            sessionId: {
+              type: 'string',
+              minLength: 8,
+              maxLength: 64,
+              description: 'Flutter UUID — required with inquiryId for amendment live chat',
+              example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+            },
+            inquiryId: {
+              type: 'string',
+              description: 'MongoDB inquiry _id — required with sessionId for amendment chat',
+              example: '507f1f77bcf86cd799439011',
+            },
+            mediaUrl: {
+              type: 'string',
+              description:
+                'Server path from session upload (e.g. /uploads/amendments/session/...). Required for document/image. Needs PUBLIC_BASE_URL for Meta.',
+            },
+            fileName: { type: 'string', example: 'aadhar.pdf' },
+          },
+        },
+        AmendmentFinalizeRequest: {
+          type: 'object',
+          required: ['action', 'amendmentType'],
+          properties: {
+            action: {
+              type: 'string',
+              enum: ['put_follow_up', 'mark_pending', 'mark_loss', 'mark_won'],
+            },
+            amendmentType: {
+              type: 'string',
+              enum: ['re_issue', 'cancelation', 'booking'],
+              description: 'ID prefix: TAIR / TCAN / TBOOK',
+            },
+            amountCharged: {
+              type: 'number',
+              minimum: 0,
+              description: 'Required when action is mark_won (INR, decimals allowed)',
+              example: 13500.5,
+            },
+            sessionId: {
+              type: 'string',
+              minLength: 8,
+              maxLength: 64,
+              description: 'Attach live chat messages/notes from this session',
+            },
+            notes: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['text'],
+                properties: { text: { type: 'string' } },
+              },
+            },
+          },
+        },
+        AmendmentNoteRequest: {
+          type: 'object',
+          required: ['text'],
+          properties: {
+            text: { type: 'string', maxLength: 2000, example: 'Customer agreed to re-issue fare' },
+          },
+        },
+        Amendment: {
+          type: 'object',
+          properties: {
+            amendmentId: { type: 'string', example: 'TAIR59733107042' },
+            amendmentType: { type: 'string', enum: ['re_issue', 'cancelation', 'booking'] },
+            status: { type: 'string', enum: ['followup', 'pending', 'loss', 'completed'] },
+            amountCharged: { type: 'number', nullable: true },
+            sessionId: { type: 'string', nullable: true },
+            inquiryId: { type: 'string' },
+            createdBy: { type: 'string' },
+            processedAt: { type: 'string', format: 'date-time' },
+            chatLockedAt: { type: 'string', format: 'date-time' },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        AmendmentMessage: {
+          type: 'object',
+          properties: {
+            type: { type: 'string', enum: ['text', 'document', 'image'] },
+            direction: { type: 'string', enum: ['inbound', 'outbound'] },
+            senderType: { type: 'string', enum: ['employee', 'customer', 'system'] },
+            text: { type: 'string' },
+            mediaUrl: { type: 'string', nullable: true },
+            fileName: { type: 'string', nullable: true },
+            mimeType: { type: 'string', nullable: true },
+            peerPhone: { type: 'string', nullable: true },
+            createdAt: { type: 'string', format: 'date-time' },
           },
         },
         DepartmentRoleItem: {
@@ -309,6 +419,11 @@ const options = {
       { name: 'Health', description: 'Liveness and readiness' },
       { name: 'Auth', description: 'Authentication endpoints' },
       { name: 'Inquiries', description: 'Inquiry management' },
+      {
+        name: 'Amendments',
+        description:
+          'Inquiry amendments — finalize from Q&A chat (sales/admin). Live session uses sessionId.',
+      },
       { name: 'Members', description: 'Member (HR) management' },
       {
         name: 'WhatsApp',
@@ -639,6 +754,366 @@ const spec = {
             },
           },
           401: { description: 'Authentication required' },
+        },
+      },
+    },
+    '/api/v1/inquiries/{id}': {
+      get: {
+        tags: ['Inquiries'],
+        summary: 'Get inquiry by ID',
+        description: 'Returns inquiry detail with embedded `amendments[]` list (newest first).',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', example: '507f1f77bcf86cd799439011' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Inquiry with amendments',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        inquiry: {
+                          type: 'object',
+                          properties: {
+                            amendments: {
+                              type: 'array',
+                              items: { $ref: '#/components/schemas/Amendment' },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Invalid inquiry id' },
+          401: { description: 'Authentication required' },
+          404: { description: 'Inquiry not found' },
+        },
+      },
+    },
+    '/api/v1/inquiries/{inquiryId}/amendments/finalize': {
+      post: {
+        tags: ['Amendments'],
+        summary: 'Finalize amendment (create from action button)',
+        description:
+          '**Sales or admin.** Creates amendment + locks chat. Use after Q&A session (`sessionId`) or without chat. Actions: followup, pending, loss, completed (won).',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'inquiryId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', example: '507f1f77bcf86cd799439011' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/AmendmentFinalizeRequest' },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Amendment created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        amendment: { $ref: '#/components/schemas/Amendment' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden (requires sales or admin)' },
+          404: { description: 'Inquiry not found' },
+          422: { description: 'Validation failed' },
+        },
+      },
+    },
+    '/api/v1/inquiries/{inquiryId}/amendments': {
+      get: {
+        tags: ['Amendments'],
+        summary: 'List amendments for inquiry',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'inquiryId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', example: '507f1f77bcf86cd799439011' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Amendment list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        amendments: {
+                          type: 'array',
+                          items: { $ref: '#/components/schemas/Amendment' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden' },
+          404: { description: 'Inquiry not found' },
+        },
+      },
+    },
+    '/api/v1/inquiries/{inquiryId}/amendments/{amendmentId}': {
+      get: {
+        tags: ['Amendments'],
+        summary: 'Get amendment by business ID',
+        description: 'Read-only amendment card (TAIR/TCAN/TBOOK id).',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'inquiryId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+          {
+            name: 'amendmentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', example: 'TAIR59733107042' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Amendment detail',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        amendment: { $ref: '#/components/schemas/Amendment' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden' },
+          404: { description: 'Not found' },
+        },
+      },
+    },
+    '/api/v1/inquiries/{inquiryId}/amendments/{amendmentId}/messages': {
+      get: {
+        tags: ['Amendments'],
+        summary: 'Get finalized amendment chat (read-only)',
+        description: 'Question & Answer history including text, document, and image messages.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'inquiryId', in: 'path', required: true, schema: { type: 'string' } },
+          {
+            name: 'amendmentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', example: 'TAIR59733107042' },
+          },
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 100 } },
+        ],
+        responses: {
+          200: {
+            description: 'Paginated messages',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        amendmentId: { type: 'string' },
+                        items: {
+                          type: 'array',
+                          items: { $ref: '#/components/schemas/AmendmentMessage' },
+                        },
+                        page: { type: 'integer' },
+                        limit: { type: 'integer' },
+                        totalItems: { type: 'integer' },
+                        totalPages: { type: 'integer' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden' },
+          404: { description: 'Not found' },
+        },
+      },
+    },
+    '/api/v1/inquiries/{inquiryId}/amendments/{amendmentId}/notes': {
+      get: {
+        tags: ['Amendments'],
+        summary: 'List Q&A notes on finalized amendment',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'inquiryId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'amendmentId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          200: { description: 'Notes list (read-only)' },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden' },
+          404: { description: 'Not found' },
+        },
+      },
+    },
+    '/api/v1/inquiries/{inquiryId}/amendments/session/{sessionId}/messages': {
+      get: {
+        tags: ['Amendments'],
+        summary: 'Get live session chat (before finalize)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'inquiryId', in: 'path', required: true, schema: { type: 'string' } },
+          {
+            name: 'sessionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' },
+          },
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 100 } },
+        ],
+        responses: {
+          200: { description: 'Paginated session messages' },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden' },
+          404: { description: 'Session not found or finalized' },
+        },
+      },
+    },
+    '/api/v1/inquiries/{inquiryId}/amendments/session/{sessionId}/notes': {
+      post: {
+        tags: ['Amendments'],
+        summary: 'Add Q&A note (before finalize)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'inquiryId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'sessionId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/AmendmentNoteRequest' },
+            },
+          },
+        },
+        responses: {
+          201: { description: 'Note created' },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden' },
+          404: { description: 'Session not found' },
+          422: { description: 'Validation failed' },
+        },
+      },
+    },
+    '/api/v1/inquiries/{inquiryId}/amendments/session/{sessionId}/uploads': {
+      post: {
+        tags: ['Amendments'],
+        summary: 'Upload file for session chat (before finalize)',
+        description:
+          'Multipart field `file`. PDF, JPEG, JPG, PNG; max 5MB. Returns `mediaUrl` for **POST /whatsapp/send** with type document/image.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'inquiryId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'sessionId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['file'],
+                properties: {
+                  file: { type: 'string', format: 'binary' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: 'File uploaded',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        mediaUrl: {
+                          type: 'string',
+                          example: '/uploads/amendments/session/uuid/file.pdf',
+                        },
+                        fileName: { type: 'string' },
+                        mimeType: { type: 'string' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'No file or invalid type' },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden' },
         },
       },
     },
@@ -1012,9 +1487,9 @@ const spec = {
     '/api/v1/whatsapp/send': {
       post: {
         tags: ['WhatsApp'],
-        summary: 'Send WhatsApp text message',
+        summary: 'Send WhatsApp message (text / document / image)',
         description:
-          'Sends a plain text message to a user via WhatsApp Cloud API (requires JWT). On success, the message is stored for the conversation list. If Graph credentials are invalid/expired, response may be 502.',
+          '**Sales or admin.** Sends via WhatsApp Cloud API. For amendment live chat, include `sessionId` + `inquiryId`. Document/image require prior **session upload** and `PUBLIC_BASE_URL` for Meta to fetch the file.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1027,9 +1502,10 @@ const spec = {
         responses: {
           200: { description: 'Message accepted by Graph API' },
           401: { description: 'Authentication required' },
+          403: { description: 'Forbidden (requires sales or admin)' },
           422: { description: 'Validation failed' },
           502: { description: 'Graph API error' },
-          503: { description: 'WhatsApp env not configured' },
+          503: { description: 'WhatsApp or PUBLIC_BASE_URL not configured' },
         },
       },
     },

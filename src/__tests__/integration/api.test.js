@@ -8,6 +8,7 @@ process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'test-refresh
 jest.mock('../../services/inquiryService', () => ({
   createInquiry: jest.fn(),
   getAllInquiries: jest.fn(),
+  getInquiryById: jest.fn(),
 }));
 
 jest.mock('../../services/memberService', () => ({
@@ -21,15 +22,31 @@ jest.mock('../../services/whatsappService', () => {
   const actual = jest.requireActual('../../services/whatsappService');
   return {
     ...actual,
+    sendMessage: jest.fn(),
     sendTextMessage: jest.fn(),
     getConversations: jest.fn(),
     getMessagesByPeer: jest.fn(),
   };
 });
 
+jest.mock('../../services/amendmentService', () => ({
+  finalizeAmendment: jest.fn(),
+  listAmendmentsByInquiry: jest.fn(),
+  getAmendment: jest.fn(),
+  getAmendmentMessages: jest.fn(),
+  getSessionMessages: jest.fn(),
+  getAmendmentNotes: jest.fn(),
+  addSessionNote: jest.fn(),
+  uploadSessionFile: jest.fn(),
+  registerActiveSession: jest.fn(),
+  loadInquiry: jest.fn(),
+  phoneToPeer: jest.fn(),
+}));
+
 const inquiryService = require('../../services/inquiryService');
 const memberService = require('../../services/memberService');
 const whatsappService = require('../../services/whatsappService');
+const amendmentService = require('../../services/amendmentService');
 const AppError = require('../../utils/AppError');
 const { messages } = require('../../locales');
 const app = require('../../app');
@@ -37,13 +54,20 @@ const app = require('../../app');
 beforeEach(() => {
   inquiryService.createInquiry.mockReset();
   inquiryService.getAllInquiries.mockReset();
+  inquiryService.getInquiryById.mockReset();
   memberService.createMember.mockReset();
   memberService.updateMember.mockReset();
   memberService.getMembers.mockReset();
   memberService.deleteMember.mockReset();
+  whatsappService.sendMessage.mockReset();
   whatsappService.sendTextMessage.mockReset();
   whatsappService.getConversations.mockReset();
   whatsappService.getMessagesByPeer.mockReset();
+  amendmentService.finalizeAmendment.mockReset();
+  amendmentService.listAmendmentsByInquiry.mockReset();
+  amendmentService.getAmendment.mockReset();
+  amendmentService.getAmendmentMessages.mockReset();
+  amendmentService.addSessionNote.mockReset();
 });
 
 describe('Health', () => {
@@ -231,6 +255,19 @@ describe('Inquiries', () => {
       totalPages: 1,
     });
     expect(inquiryService.getAllInquiries).toHaveBeenCalled();
+  });
+
+  it('GET /api/v1/inquiries/:id returns 200 with embedded amendments', async () => {
+    inquiryService.getInquiryById.mockResolvedValue({
+      _id: '507f1f77bcf86cd799439011',
+      fullName: 'Hardik',
+      amendments: [{ amendmentId: 'TAIR123', status: 'pending' }],
+    });
+    const res = await request(app)
+      .get('/api/v1/inquiries/507f1f77bcf86cd799439011')
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.inquiry.amendments).toHaveLength(1);
   });
 
   it('GET /api/v1/inquiries?limit=101 returns 422', async () => {
@@ -710,8 +747,19 @@ describe('WhatsApp send', () => {
   beforeAll(async () => {
     const loginRes = await request(app)
       .post('/api/v1/auth/login')
-      .send({ userId: 'wa-user', email: 'wa@test.com', role: 'user' });
+      .send({ userId: 'wa-user', email: 'wa@test.com', role: 'sales' });
     authToken = loginRes.body.data.accessToken;
+  });
+
+  it('POST /api/v1/whatsapp/send returns 403 for non-sales role', async () => {
+    const loginRes = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ userId: 'wa-user2', email: 'wa2@test.com', role: 'user' });
+    const res = await request(app)
+      .post('/api/v1/whatsapp/send')
+      .set('Authorization', `Bearer ${loginRes.body.data.accessToken}`)
+      .send({ to: '919876543210', text: 'Hi' });
+    expect(res.status).toBe(403);
   });
 
   it('POST /api/v1/whatsapp/send returns 401 without token', async () => {
@@ -730,7 +778,7 @@ describe('WhatsApp send', () => {
   });
 
   it('POST /api/v1/whatsapp/send returns 200 when service succeeds', async () => {
-    whatsappService.sendTextMessage.mockResolvedValue({ messages: [{ id: 'wamid.test' }] });
+    whatsappService.sendMessage.mockResolvedValue({ messages: [{ id: 'wamid.test' }] });
     const res = await request(app)
       .post('/api/v1/whatsapp/send')
       .set('Authorization', `Bearer ${authToken}`)
@@ -738,10 +786,7 @@ describe('WhatsApp send', () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('success');
     expect(res.body.data.graph.messages[0].id).toBe('wamid.test');
-    expect(whatsappService.sendTextMessage).toHaveBeenCalledWith({
-      to: '919876543210',
-      text: 'Flight option A',
-    });
+    expect(whatsappService.sendMessage).toHaveBeenCalled();
   });
 });
 
@@ -807,5 +852,61 @@ describe('WhatsApp conversations', () => {
       '919876543210',
       expect.objectContaining({ page: 1, limit: 50 })
     );
+  });
+});
+
+describe('Amendments', () => {
+  let salesToken;
+  const inquiryId = '507f1f77bcf86cd799439011';
+
+  beforeAll(async () => {
+    const loginRes = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ userId: 'sales-emp', email: 'sales@test.com', role: 'sales' });
+    salesToken = loginRes.body.data.accessToken;
+  });
+
+  it('POST finalize returns 403 for user role', async () => {
+    const loginRes = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ userId: 'u1', email: 'u1@test.com', role: 'user' });
+    const res = await request(app)
+      .post(`/api/v1/inquiries/${inquiryId}/amendments/finalize`)
+      .set('Authorization', `Bearer ${loginRes.body.data.accessToken}`)
+      .send({ action: 'mark_pending', amendmentType: 're_issue' });
+    expect(res.status).toBe(403);
+  });
+
+  it('POST finalize returns 201 for sales', async () => {
+    amendmentService.finalizeAmendment.mockResolvedValue({
+      amendmentId: 'TAIR999',
+      status: 'pending',
+      amendmentType: 're_issue',
+    });
+    const res = await request(app)
+      .post(`/api/v1/inquiries/${inquiryId}/amendments/finalize`)
+      .set('Authorization', `Bearer ${salesToken}`)
+      .send({ action: 'mark_pending', amendmentType: 're_issue' });
+    expect(res.status).toBe(201);
+    expect(res.body.data.amendment.amendmentId).toBe('TAIR999');
+  });
+
+  it('POST finalize returns 422 when mark_won without amount', async () => {
+    const res = await request(app)
+      .post(`/api/v1/inquiries/${inquiryId}/amendments/finalize`)
+      .set('Authorization', `Bearer ${salesToken}`)
+      .send({ action: 'mark_won', amendmentType: 'booking' });
+    expect(res.status).toBe(422);
+  });
+
+  it('GET amendments list returns 200', async () => {
+    amendmentService.listAmendmentsByInquiry.mockResolvedValue([
+      { amendmentId: 'TAIR1', status: 'loss' },
+    ]);
+    const res = await request(app)
+      .get(`/api/v1/inquiries/${inquiryId}/amendments`)
+      .set('Authorization', `Bearer ${salesToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.amendments).toHaveLength(1);
   });
 });

@@ -36,7 +36,7 @@ app.use('/webhooks/whatsapp', whatsappJsonParser, whatsappWebhookRoutes);
 app.use(express.json());
 
 // Member document uploads (PDF / images) — served at /uploads/members/<filename>
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // Rate limiting: 100 requests per 15 min per IP (general); off in test to avoid flaky parallel runs
 const generalLimiter = rateLimit({

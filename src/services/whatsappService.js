@@ -1,14 +1,41 @@
 const WhatsappMessage = require('../models/WhatsappMessage');
 const { WHATSAPP_MESSAGE_DIRECTION } = require('../constants/whatsappMessageDirection');
+const { AMENDMENT_MESSAGE_TYPE } = require('../constants/amendmentMessageType');
+const amendmentService = require('./amendmentService');
 const { log } = require('../utils/logger');
 const AppError = require('../utils/AppError');
 
 const MAX_LIMIT = 100;
 
+const waTimestampFromUnix = (timestamp) => {
+  if (!timestamp) return undefined;
+  const seconds = Number(timestamp);
+  if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
+  return new Date(seconds * 1000);
+};
+
+const publicBaseUrl = () => {
+  const base = (process.env.PUBLIC_BASE_URL || '').trim().replace(/\/$/, '');
+  return base;
+};
+
+const resolvePublicUrl = (mediaUrl) => {
+  if (!mediaUrl) return null;
+  if (/^https?:\/\//i.test(mediaUrl)) return mediaUrl;
+  const base = publicBaseUrl();
+  if (!base) {
+    throw new AppError(
+      'PUBLIC_BASE_URL is required to send document/image messages via WhatsApp',
+      503
+    );
+  }
+  const path = mediaUrl.startsWith('/') ? mediaUrl : `/${mediaUrl}`;
+  return `${base}${path}`;
+};
+
 /**
- * Walks WhatsApp Cloud API webhook payload and returns normalized inbound text messages.
- * @param {object} body - Parsed JSON body
- * @returns {Array<{ id: string, from: string, text: string, timestamp: string }>}
+ * @param {object} body
+ * @returns {Array<object>}
  */
 const parseInboundMessages = (body) => {
   const results = [];
@@ -26,12 +53,32 @@ const parseInboundMessages = (body) => {
       if (!Array.isArray(messages)) continue;
 
       for (const msg of messages) {
+        const base = {
+          id: msg.id,
+          from: msg.from,
+          timestamp: String(msg.timestamp ?? ''),
+        };
+
         if (msg?.type === 'text' && msg.text?.body != null) {
           results.push({
-            id: msg.id,
-            from: msg.from,
+            ...base,
+            type: AMENDMENT_MESSAGE_TYPE.TEXT,
             text: msg.text.body,
-            timestamp: String(msg.timestamp ?? ''),
+          });
+        } else if (msg?.type === 'document' && msg.document) {
+          results.push({
+            ...base,
+            type: AMENDMENT_MESSAGE_TYPE.DOCUMENT,
+            text: msg.document.caption || '',
+            fileName: msg.document.filename,
+            mimeType: msg.document.mime_type,
+          });
+        } else if (msg?.type === 'image' && msg.image) {
+          results.push({
+            ...base,
+            type: AMENDMENT_MESSAGE_TYPE.IMAGE,
+            text: msg.image.caption || '',
+            mimeType: msg.image.mime_type,
           });
         }
       }
@@ -41,41 +88,49 @@ const parseInboundMessages = (body) => {
   return results;
 };
 
-const waTimestampFromUnix = (timestamp) => {
-  if (!timestamp) return undefined;
-  const seconds = Number(timestamp);
-  if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
-  return new Date(seconds * 1000);
+const persistGlobalWhatsappMessage = async (fields) => {
+  await WhatsappMessage.findOneAndUpdate(
+    { wamid: fields.wamid },
+    { $setOnInsert: fields },
+    { upsert: true }
+  );
 };
 
-/**
- * Persists inbound messages (idempotent on wamid).
- * @param {Array<{ id: string, from: string, text: string, timestamp: string }>} messages
- */
+const persistInboundToAmendmentSession = async (m) => {
+  const active = await amendmentService.findActiveSessionByPeer(m.from);
+  if (!active) return false;
+
+  await amendmentService.saveSessionMessage({
+    inquiryId: active.inquiryId,
+    sessionId: active.sessionId,
+    direction: WHATSAPP_MESSAGE_DIRECTION.INBOUND,
+    senderType: 'customer',
+    type: m.type,
+    text: m.text || '',
+    fileName: m.fileName,
+    mimeType: m.mimeType,
+    wamid: m.id,
+    peerPhone: m.from,
+    waTimestamp: waTimestampFromUnix(m.timestamp),
+  });
+  return true;
+};
+
 const persistInboundMessages = async (messages) => {
   for (const m of messages) {
-    await WhatsappMessage.findOneAndUpdate(
-      { wamid: m.id },
-      {
-        $setOnInsert: {
-          wamid: m.id,
-          direction: WHATSAPP_MESSAGE_DIRECTION.INBOUND,
-          peerPhone: m.from,
-          type: 'text',
-          text: m.text,
-          waTimestamp: waTimestampFromUnix(m.timestamp),
-        },
-      },
-      { upsert: true }
-    );
+    await persistGlobalWhatsappMessage({
+      wamid: m.id,
+      direction: WHATSAPP_MESSAGE_DIRECTION.INBOUND,
+      peerPhone: m.from,
+      type: m.type,
+      text: m.text || '',
+      waTimestamp: waTimestampFromUnix(m.timestamp),
+    });
+    await persistInboundToAmendmentSession(m);
   }
 };
 
-/**
- * Persists outbound message after Graph API accept.
- * @param {{ wamid: string, to: string, text: string }} params
- */
-const persistOutboundMessage = async ({ wamid, to, text }) => {
+const persistOutboundMessage = async ({ wamid, to, text, type = 'text' }) => {
   await WhatsappMessage.findOneAndUpdate(
     { wamid },
     {
@@ -83,8 +138,8 @@ const persistOutboundMessage = async ({ wamid, to, text }) => {
         wamid,
         direction: WHATSAPP_MESSAGE_DIRECTION.OUTBOUND,
         peerPhone: to,
-        type: 'text',
-        text,
+        type,
+        text: text || '',
         waTimestamp: new Date(),
       },
     },
@@ -92,22 +147,22 @@ const persistOutboundMessage = async ({ wamid, to, text }) => {
   );
 };
 
-/**
- * Async processing after webhook 200 — persist + log.
- * @param {object} body - Parsed webhook JSON
- * @returns {Promise<void>}
- */
 const processInboundWebhook = async (body) => {
   const messages = parseInboundMessages(body);
   if (messages.length > 0) {
     await persistInboundMessages(messages);
     for (const m of messages) {
-      log.info('[WhatsApp inbound]', { id: m.id, from: m.from, preview: m.text.slice(0, 120) });
+      log.info('[WhatsApp inbound]', {
+        id: m.id,
+        from: m.from,
+        type: m.type,
+        preview: (m.text || m.fileName || '').slice(0, 120),
+      });
     }
     return;
   }
   if (body?.entry?.length) {
-    log.info('[WhatsApp webhook] received non-text or empty messages payload');
+    log.info('[WhatsApp webhook] received unsupported or empty messages payload');
   }
 };
 
@@ -120,30 +175,75 @@ const graphMessagesUrl = () => {
   return `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
 };
 
+const buildGraphBody = ({ to, type, text, mediaUrl, fileName }) => {
+  const base = { messaging_product: 'whatsapp', to };
+
+  if (type === AMENDMENT_MESSAGE_TYPE.TEXT) {
+    return { ...base, type: 'text', text: { body: text } };
+  }
+
+  const link = resolvePublicUrl(mediaUrl);
+  if (type === AMENDMENT_MESSAGE_TYPE.DOCUMENT) {
+    return {
+      ...base,
+      type: 'document',
+      document: {
+        link,
+        caption: text || undefined,
+        filename: fileName || undefined,
+      },
+    };
+  }
+  if (type === AMENDMENT_MESSAGE_TYPE.IMAGE) {
+    return {
+      ...base,
+      type: 'image',
+      image: {
+        link,
+        caption: text || undefined,
+      },
+    };
+  }
+
+  throw new AppError('Unsupported WhatsApp message type', 422);
+};
+
 /**
- * Sends a plain text WhatsApp message via Cloud API and persists on success.
- * @param {{ to: string, text: string }} params - `to` = E.164 without leading +
- * @returns {Promise<object>} Graph API JSON (message id, etc.)
+ * @param {{ to: string, type?: string, text?: string, sessionId?: string, inquiryId?: string, mediaUrl?: string, fileName?: string, userId?: string }} params
  */
-const sendTextMessage = async ({ to, text }) => {
+const sendMessage = async ({
+  to,
+  type = AMENDMENT_MESSAGE_TYPE.TEXT,
+  text = '',
+  sessionId,
+  inquiryId,
+  mediaUrl,
+  fileName,
+  userId,
+}) => {
   const token = process.env.WHATSAPP_ACCESS_TOKEN;
   if (!token) {
     throw new AppError('WhatsApp access token is not configured', 503);
   }
 
+  if (type !== AMENDMENT_MESSAGE_TYPE.TEXT && !mediaUrl) {
+    throw new AppError('mediaUrl is required for document or image messages', 422);
+  }
+
+  if (sessionId && inquiryId && userId) {
+    await amendmentService.registerActiveSession(inquiryId, sessionId, to, userId);
+  }
+
   const url = graphMessagesUrl();
+  const graphBody = buildGraphBody({ to, type, text, mediaUrl, fileName });
+
   const res = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to,
-      type: 'text',
-      text: { body: text },
-    }),
+    body: JSON.stringify(graphBody),
   });
 
   const data = await res.json().catch(() => ({}));
@@ -158,17 +258,39 @@ const sendTextMessage = async ({ to, text }) => {
 
   const wamid = data?.messages?.[0]?.id;
   if (wamid) {
-    await persistOutboundMessage({ wamid, to, text });
+    await persistOutboundMessage({ wamid, to, text, type });
+    if (sessionId && inquiryId) {
+      await amendmentService.saveSessionMessage({
+        inquiryId,
+        sessionId,
+        direction: WHATSAPP_MESSAGE_DIRECTION.OUTBOUND,
+        senderType: 'employee',
+        type,
+        text: text || '',
+        mediaUrl,
+        fileName,
+        mimeType: undefined,
+        wamid,
+        peerPhone: to,
+        createdBy: userId,
+        waTimestamp: new Date(),
+      });
+    }
   }
 
   return data;
 };
 
-/**
- * Lists WhatsApp conversations (one row per peer phone, latest message first).
- * @param {Object} queryParams
- * @returns {Promise<{ items: object[], page: number, limit: number, totalItems: number, totalPages: number }>}
- */
+const sendTextMessage = async ({ to, text, sessionId, inquiryId, userId }) =>
+  sendMessage({
+    to,
+    type: AMENDMENT_MESSAGE_TYPE.TEXT,
+    text,
+    sessionId,
+    inquiryId,
+    userId,
+  });
+
 const getConversations = async (queryParams = {}) => {
   const { page = 1, limit = 10, search } = queryParams;
 
@@ -220,11 +342,6 @@ const getConversations = async (queryParams = {}) => {
 
 const MESSAGE_SORT_FIELDS = ['createdAt', 'waTimestamp'];
 
-/**
- * Message thread for a single peer phone.
- * @param {string} peerPhone
- * @param {Object} queryParams
- */
 const getMessagesByPeer = async (peerPhone, queryParams = {}) => {
   const { page = 1, limit = 50, sort = 'createdAt' } = queryParams;
 
@@ -261,6 +378,7 @@ module.exports = {
   persistInboundMessages,
   persistOutboundMessage,
   processInboundWebhook,
+  sendMessage,
   sendTextMessage,
   getConversations,
   getMessagesByPeer,

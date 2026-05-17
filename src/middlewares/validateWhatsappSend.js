@@ -1,9 +1,11 @@
 const Joi = require('joi');
+const mongoose = require('mongoose');
+const { AMENDMENT_MESSAGE_TYPE_VALUES } = require('../constants/amendmentMessageType');
 const { messages } = require('../locales');
 
 const t = messages.validation.whatsapp;
 
-const sendTextSchema = Joi.object({
+const sendSchema = Joi.object({
   to: Joi.string()
     .pattern(/^\d{10,15}$/)
     .required()
@@ -11,17 +13,51 @@ const sendTextSchema = Joi.object({
       'string.pattern.base': t.toInvalid,
       'string.empty': t.toRequired,
     }),
-  text: Joi.string().required().min(1).max(4096).trim().messages({
-    'string.empty': t.textRequired,
-    'string.max': t.textTooLong,
-  }),
-});
+  type: Joi.string()
+    .valid(...AMENDMENT_MESSAGE_TYPE_VALUES)
+    .optional()
+    .default('text')
+    .messages({
+      'any.only': t.typeInvalid,
+    }),
+  text: Joi.string().max(4096).trim().allow('').optional().default(''),
+  sessionId: Joi.string().trim().min(8).max(64).optional(),
+  inquiryId: Joi.string()
+    .custom((value, helpers) => {
+      if (!value) return value;
+      if (!mongoose.Types.ObjectId.isValid(value)) {
+        return helpers.error('any.invalid');
+      }
+      return value;
+    })
+    .optional()
+    .messages({
+      'any.invalid': t.inquiryIdInvalid,
+    }),
+  mediaUrl: Joi.string().trim().max(2048).optional(),
+  fileName: Joi.string().trim().max(255).optional(),
+})
+  .custom((value, helpers) => {
+    const { type, text, sessionId, inquiryId, mediaUrl } = value;
+    if (type === 'text' && !text) {
+      return helpers.error('text.required');
+    }
+    if ((type === 'document' || type === 'image') && !mediaUrl) {
+      return helpers.error('media.required');
+    }
+    if ((sessionId && !inquiryId) || (!sessionId && inquiryId)) {
+      return helpers.error('session.pair');
+    }
+    return value;
+  })
+  .messages({
+    'text.required': t.textRequired,
+    'media.required': messages.validation.amendment.mediaUrlRequired,
+    'session.pair': 'sessionId and inquiryId must be provided together',
+  });
 
-/**
- * Validates POST /api/v1/whatsapp/send body.
- */
 const validateWhatsappSend = (req, res, next) => {
-  const { error, value } = sendTextSchema.validate(req.body, {
+  const { error, value } = sendSchema.validate(req.body, {
     abortEarly: false,
     stripUnknown: true,
   });

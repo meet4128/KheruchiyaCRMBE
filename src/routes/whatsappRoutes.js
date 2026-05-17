@@ -1,5 +1,6 @@
 const express = require('express');
 const authMiddleware = require('../middlewares/authMiddleware');
+const requireRoles = require('../middlewares/requireRoles');
 const validateWhatsappSend = require('../middlewares/validateWhatsappSend');
 const validateWhatsappConversationQuery = require('../middlewares/validateWhatsappConversationQuery');
 const validateWhatsappMessagesQuery = require('../middlewares/validateWhatsappMessagesQuery');
@@ -21,6 +22,12 @@ router.get(
   validateWhatsappMessagesQuery,
   whatsappController.getMessages
 );
-router.post('/send', authMiddleware, validateWhatsappSend, whatsappController.sendText);
+router.post(
+  '/send',
+  authMiddleware,
+  requireRoles('sales', 'admin'),
+  validateWhatsappSend,
+  whatsappController.sendMessage
+);
 
 module.exports = router;

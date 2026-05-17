@@ -1,4 +1,6 @@
+const mongoose = require('mongoose');
 const Inquiry = require('../models/Inquiry');
+const Amendment = require('../models/Amendment');
 const AppError = require('../utils/AppError');
 const { INQUIRY_STATUS_VALUES } = require('../constants/inquiryStatus');
 const { messages } = require('../locales');
@@ -96,4 +98,22 @@ const getAllInquiries = async (queryParams = {}) => {
   };
 };
 
-module.exports = { createInquiry, getAllInquiries };
+const getInquiryById = async (id) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new AppError(messages.errors.invalidIdOrFormat, 400);
+  }
+
+  const inquiry = await Inquiry.findById(id).lean();
+  if (!inquiry) {
+    throw new AppError(messages.errors.inquiryNotFound, 404);
+  }
+
+  const amendments = await Amendment.find({ inquiryId: id }).sort({ createdAt: -1 }).lean();
+
+  return {
+    ...inquiry,
+    amendments,
+  };
+};
+
+module.exports = { createInquiry, getAllInquiries, getInquiryById };
