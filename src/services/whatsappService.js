@@ -2,6 +2,7 @@ const WhatsappMessage = require('../models/WhatsappMessage');
 const { WHATSAPP_MESSAGE_DIRECTION } = require('../constants/whatsappMessageDirection');
 const { AMENDMENT_MESSAGE_TYPE } = require('../constants/amendmentMessageType');
 const amendmentService = require('./amendmentService');
+const { storeInboundMedia } = require('../utils/whatsappInboundMedia');
 const { log } = require('../utils/logger');
 const AppError = require('../utils/AppError');
 
@@ -72,6 +73,7 @@ const parseInboundMessages = (body) => {
             text: msg.document.caption || '',
             fileName: msg.document.filename,
             mimeType: msg.document.mime_type,
+            mediaId: msg.document.id,
           });
         } else if (msg?.type === 'image' && msg.image) {
           results.push({
@@ -79,6 +81,7 @@ const parseInboundMessages = (body) => {
             type: AMENDMENT_MESSAGE_TYPE.IMAGE,
             text: msg.image.caption || '',
             mimeType: msg.image.mime_type,
+            mediaId: msg.image.id,
           });
         }
       }
@@ -88,16 +91,27 @@ const parseInboundMessages = (body) => {
   return results;
 };
 
-const persistGlobalWhatsappMessage = async (fields) => {
+const buildWhatsappMessageFields = (m) => ({
+  wamid: m.id,
+  direction: WHATSAPP_MESSAGE_DIRECTION.INBOUND,
+  peerPhone: m.from,
+  type: m.type,
+  text: m.text || '',
+  mediaUrl: m.mediaUrl,
+  fileName: m.fileName,
+  mimeType: m.mimeType,
+  waTimestamp: waTimestampFromUnix(m.timestamp),
+});
+
+const persistGlobalWhatsappMessage = async (m) => {
   await WhatsappMessage.findOneAndUpdate(
-    { wamid: fields.wamid },
-    { $setOnInsert: fields },
+    { wamid: m.id },
+    { $setOnInsert: buildWhatsappMessageFields(m) },
     { upsert: true }
   );
 };
 
-const persistInboundToAmendmentSession = async (m) => {
-  const active = await amendmentService.findActiveSessionByPeer(m.from);
+const persistInboundToAmendmentSession = async (m, active) => {
   if (!active) return false;
 
   await amendmentService.saveSessionMessage({
@@ -107,6 +121,7 @@ const persistInboundToAmendmentSession = async (m) => {
     senderType: 'customer',
     type: m.type,
     text: m.text || '',
+    mediaUrl: m.mediaUrl,
     fileName: m.fileName,
     mimeType: m.mimeType,
     wamid: m.id,
@@ -116,21 +131,49 @@ const persistInboundToAmendmentSession = async (m) => {
   return true;
 };
 
-const persistInboundMessages = async (messages) => {
-  for (const m of messages) {
-    await persistGlobalWhatsappMessage({
-      wamid: m.id,
-      direction: WHATSAPP_MESSAGE_DIRECTION.INBOUND,
+const enrichInboundMedia = async (m, active) => {
+  if (!m.mediaId) {
+    return m;
+  }
+
+  try {
+    const stored = await storeInboundMedia({
+      mediaId: m.mediaId,
+      mimeType: m.mimeType,
+      fileName: m.fileName,
       peerPhone: m.from,
-      type: m.type,
-      text: m.text || '',
-      waTimestamp: waTimestampFromUnix(m.timestamp),
+      inquiryId: active?.inquiryId,
+      sessionId: active?.sessionId,
     });
-    await persistInboundToAmendmentSession(m);
+    return { ...m, ...stored };
+  } catch (err) {
+    log.error('[WhatsApp media] inbound download failed', {
+      mediaId: m.mediaId,
+      from: m.from,
+      message: err.message,
+    });
+    return m;
   }
 };
 
-const persistOutboundMessage = async ({ wamid, to, text, type = 'text' }) => {
+const persistInboundMessages = async (messages) => {
+  for (const m of messages) {
+    const active = await amendmentService.findActiveSessionByPeer(m.from);
+    const enriched = await enrichInboundMedia(m, active);
+    await persistGlobalWhatsappMessage(enriched);
+    await persistInboundToAmendmentSession(enriched, active);
+  }
+};
+
+const persistOutboundMessage = async ({
+  wamid,
+  to,
+  text,
+  type = 'text',
+  mediaUrl,
+  fileName,
+  mimeType,
+}) => {
   await WhatsappMessage.findOneAndUpdate(
     { wamid },
     {
@@ -140,6 +183,9 @@ const persistOutboundMessage = async ({ wamid, to, text, type = 'text' }) => {
         peerPhone: to,
         type,
         text: text || '',
+        mediaUrl,
+        fileName,
+        mimeType,
         waTimestamp: new Date(),
       },
     },
@@ -258,7 +304,7 @@ const sendMessage = async ({
 
   const wamid = data?.messages?.[0]?.id;
   if (wamid) {
-    await persistOutboundMessage({ wamid, to, text, type });
+    await persistOutboundMessage({ wamid, to, text, type, mediaUrl, fileName });
     if (sessionId && inquiryId) {
       await amendmentService.saveSessionMessage({
         inquiryId,

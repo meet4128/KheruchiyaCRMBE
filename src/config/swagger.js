@@ -467,7 +467,7 @@ const spec = {
         tags: ['WhatsApp'],
         summary: 'Webhook events (Meta)',
         description:
-          'Inbound WhatsApp events. When `WHATSAPP_APP_SECRET` is set, requests must include a valid `X-Hub-Signature-256` header computed from the raw request body.',
+          'Inbound WhatsApp events (text, document, image). Document/image files are downloaded from Meta and stored under `/uploads/...` with `mediaUrl` on message records. Requires `WHATSAPP_ACCESS_TOKEN`. When `WHATSAPP_APP_SECRET` is set, requests must include a valid `X-Hub-Signature-256` header.',
         parameters: [
           {
             name: 'X-Hub-Signature-256',

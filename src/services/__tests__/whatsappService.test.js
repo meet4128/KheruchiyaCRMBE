@@ -61,6 +61,7 @@ describe('whatsappService.parseInboundMessages', () => {
                     timestamp: '1710000001',
                     type: 'document',
                     document: {
+                      id: 'META_MEDIA_ID',
                       caption: 'My Aadhar',
                       filename: 'aadhar.pdf',
                       mime_type: 'application/pdf',
@@ -75,7 +76,42 @@ describe('whatsappService.parseInboundMessages', () => {
     };
     const out = parseInboundMessages(body);
     expect(out[0].type).toBe('document');
+    expect(out[0].mediaId).toBe('META_MEDIA_ID');
     expect(out[0].fileName).toBe('aadhar.pdf');
     expect(out[0].text).toBe('My Aadhar');
+  });
+
+  it('extracts image messages with media id', () => {
+    const body = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messages: [
+                  {
+                    from: '919811223344',
+                    id: 'wamid.img',
+                    timestamp: '1710000002',
+                    type: 'image',
+                    image: {
+                      id: 'IMG_MEDIA_ID',
+                      mime_type: 'image/jpeg',
+                      caption: 'Ticket',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const out = parseInboundMessages(body);
+    expect(out[0].type).toBe('image');
+    expect(out[0].mediaId).toBe('IMG_MEDIA_ID');
+    expect(out[0].text).toBe('Ticket');
   });
 });

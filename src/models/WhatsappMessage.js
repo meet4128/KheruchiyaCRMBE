@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { WHATSAPP_MESSAGE_DIRECTIONS } = require('../constants/whatsappMessageDirection');
+const { AMENDMENT_MESSAGE_TYPE_VALUES } = require('../constants/amendmentMessageType');
 
 const whatsappMessageSchema = new mongoose.Schema(
   {
@@ -11,8 +12,16 @@ const whatsappMessageSchema = new mongoose.Schema(
       trim: true,
       match: /^\d{10,15}$/,
     },
-    type: { type: String, required: true, enum: ['text'], default: 'text' },
-    text: { type: String, required: true, trim: true },
+    type: {
+      type: String,
+      required: true,
+      enum: AMENDMENT_MESSAGE_TYPE_VALUES,
+      default: 'text',
+    },
+    text: { type: String, trim: true, default: '' },
+    mediaUrl: { type: String, trim: true },
+    fileName: { type: String, trim: true },
+    mimeType: { type: String, trim: true },
     waTimestamp: { type: Date },
   },
   {
