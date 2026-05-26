@@ -93,6 +93,19 @@ const memberCreateSchema = Joi.object({
   aadharDocumentUrl: optionalMemberDocumentUrl,
   panDocumentUrl: optionalMemberDocumentUrl,
   cancelChequeDocumentUrl: optionalMemberDocumentUrl,
+
+  // Invite controls — backend default sendInvite=true; inviteEmail overrides personalEmail
+  sendInvite: Joi.boolean().default(true),
+  inviteEmail: Joi.string()
+    .email({ tlds: { allow: false } })
+    .optional()
+    .trim()
+    .lowercase()
+    .allow('')
+    .empty('')
+    .messages({
+      'string.email': t.personalEmailInvalid,
+    }),
 });
 
 /**

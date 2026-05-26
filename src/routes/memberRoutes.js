@@ -34,6 +34,12 @@ router.patch(
   validateMemberUpdate,
   memberController.updateMember
 );
+router.post(
+  '/:id/invitations/resend',
+  authMiddleware,
+  requireRoles('admin'),
+  memberController.resendInvitation
+);
 router.delete('/:id', authMiddleware, requireRoles('admin'), memberController.deleteMember);
 router.get(
   '/directory',

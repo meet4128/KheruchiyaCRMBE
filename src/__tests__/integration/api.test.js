@@ -14,6 +14,7 @@ jest.mock('../../services/inquiryService', () => ({
 jest.mock('../../services/memberService', () => ({
   createMember: jest.fn(),
   updateMember: jest.fn(),
+  resendInvitation: jest.fn(),
   getMembers: jest.fn(),
   getMembersDirectory: jest.fn(),
   deleteMember: jest.fn(),
@@ -37,6 +38,33 @@ jest.mock('../../services/purchaseTeamChatService', () => ({
   sendMessage: jest.fn(),
 }));
 
+jest.mock('../../services/authTokenService', () => ({
+  issueToken: jest.fn(),
+  verifyToken: jest.fn(),
+  consumeToken: jest.fn(),
+  invalidateOtherTokens: jest.fn(),
+}));
+
+jest.mock('../../services/passwordService', () => ({
+  hashPassword: jest.fn().mockResolvedValue('hashed-pw'),
+  comparePassword: jest.fn(),
+  assertStrong: jest.fn(),
+}));
+
+jest.mock('../../models/Member', () => ({
+  findById: jest.fn(),
+  findOne: jest.fn(),
+}));
+
+jest.mock('../../services/emailService', () => ({
+  sendInviteEmail: jest.fn().mockResolvedValue({ id: 'em_1', devFallback: false }),
+  sendResetEmail: jest.fn().mockResolvedValue({ id: 'em_2', devFallback: false }),
+  buildInviteLink: jest.fn().mockReturnValue('http://localhost:3000/set-password?token=x'),
+  buildResetLink: jest.fn().mockReturnValue('http://localhost:3000/reset-password?token=x'),
+  getAppBaseUrl: jest.fn().mockReturnValue('http://localhost:3000'),
+  resetClientForTests: jest.fn(),
+}));
+
 jest.mock('../../services/amendmentService', () => ({
   finalizeAmendment: jest.fn(),
   listAmendmentsByInquiry: jest.fn(),
@@ -56,6 +84,10 @@ const memberService = require('../../services/memberService');
 const whatsappService = require('../../services/whatsappService');
 const amendmentService = require('../../services/amendmentService');
 const purchaseTeamChatService = require('../../services/purchaseTeamChatService');
+const authTokenService = require('../../services/authTokenService');
+const passwordService = require('../../services/passwordService');
+const emailService = require('../../services/emailService');
+const Member = require('../../models/Member');
 const AppError = require('../../utils/AppError');
 const { messages } = require('../../locales');
 const app = require('../../app');
@@ -66,6 +98,7 @@ beforeEach(() => {
   inquiryService.getInquiryById.mockReset();
   memberService.createMember.mockReset();
   memberService.updateMember.mockReset();
+  memberService.resendInvitation.mockReset();
   memberService.getMembers.mockReset();
   memberService.getMembersDirectory.mockReset();
   memberService.deleteMember.mockReset();
@@ -82,6 +115,18 @@ beforeEach(() => {
   purchaseTeamChatService.getOrCreateThread.mockReset();
   purchaseTeamChatService.getMessages.mockReset();
   purchaseTeamChatService.sendMessage.mockReset();
+  authTokenService.issueToken.mockReset();
+  authTokenService.verifyToken.mockReset();
+  authTokenService.consumeToken.mockReset();
+  authTokenService.invalidateOtherTokens.mockReset();
+  passwordService.hashPassword.mockReset();
+  passwordService.hashPassword.mockResolvedValue('hashed-pw');
+  passwordService.comparePassword.mockReset();
+  passwordService.assertStrong.mockReset();
+  Member.findById.mockReset();
+  Member.findOne.mockReset();
+  emailService.sendInviteEmail.mockClear();
+  emailService.sendResetEmail.mockClear();
 });
 
 describe('Health', () => {
@@ -128,7 +173,7 @@ describe('Auth', () => {
       .send({ userId: 'test-user', email: 'test@test.com', role: 'manager' });
     expect(res.status).toBe(422);
     expect(res.body.status).toBe('fail');
-    expect(res.body.data.allowedRoles).toEqual(['admin', 'sales', 'purchase', 'user']);
+    expect(res.body.data.allowedRoles).toEqual(['admin', 'sales', 'purchase', 'account', 'user']);
   });
 
   it('POST /api/v1/auth/refresh-token returns 400 when refreshToken missing', async () => {
@@ -172,6 +217,452 @@ describe('Auth', () => {
       email: 'me@test.com',
       role: 'admin',
     });
+  });
+});
+
+describe('Password flow', () => {
+  const rawToken = 'a'.repeat(64);
+  const memberId = '507f1f77bcf86cd799439099';
+
+  // ─── GET /api/v1/auth/token/validate ────────────────────────────────────
+  it('GET /token/validate returns 422 when token missing', async () => {
+    const res = await request(app).get('/api/v1/auth/token/validate?purpose=invite');
+    expect(res.status).toBe(422);
+    expect(res.body.data.errors.map((e) => e.field)).toContain('token');
+  });
+
+  it('GET /token/validate returns 422 when purpose invalid', async () => {
+    const res = await request(app).get(
+      `/api/v1/auth/token/validate?token=${rawToken}&purpose=nope`
+    );
+    expect(res.status).toBe(422);
+  });
+
+  it('GET /token/validate returns 422 when token is malformed', async () => {
+    const res = await request(app).get('/api/v1/auth/token/validate?token=short&purpose=invite');
+    expect(res.status).toBe(422);
+  });
+
+  it('GET /token/validate returns 200 with masked email when valid', async () => {
+    authTokenService.verifyToken.mockResolvedValue({
+      _id: 't1',
+      userId: memberId,
+      expiresAt: new Date('2026-06-01T00:00:00Z'),
+    });
+    Member.findById.mockReturnValue({
+      select: jest.fn().mockResolvedValue({
+        _id: memberId,
+        personalEmail: 'aisha@example.com',
+        invitationStatus: 'pending',
+      }),
+    });
+
+    const res = await request(app).get(
+      `/api/v1/auth/token/validate?token=${rawToken}&purpose=invite`
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.data.valid).toBe(true);
+    expect(res.body.data.purpose).toBe('invite');
+    expect(res.body.data.email).toBe('a****@example.com');
+    expect(res.body.data.expiresAt).toBeDefined();
+  });
+
+  it('GET /token/validate returns 410 when token is expired', async () => {
+    authTokenService.verifyToken.mockRejectedValue(
+      new AppError(messages.errors.authTokenExpired, 410)
+    );
+    const res = await request(app).get(
+      `/api/v1/auth/token/validate?token=${rawToken}&purpose=invite`
+    );
+    expect(res.status).toBe(410);
+    expect(res.body.data.message).toBe(messages.errors.authTokenExpired);
+  });
+
+  // ─── POST /api/v1/auth/set-password ─────────────────────────────────────
+  it('POST /set-password returns 422 for weak password', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/set-password')
+      .send({ token: rawToken, password: 'short' });
+    expect(res.status).toBe(422);
+    expect(res.body.data.errors.map((e) => e.field)).toContain('password');
+    expect(authTokenService.verifyToken).not.toHaveBeenCalled();
+  });
+
+  it('POST /set-password returns 422 when token is malformed', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/set-password')
+      .send({ token: 'nope', password: 'Secret123' });
+    expect(res.status).toBe(422);
+  });
+
+  it('POST /set-password returns 410 when token already used', async () => {
+    authTokenService.verifyToken.mockRejectedValue(
+      new AppError(messages.errors.authTokenAlreadyUsed, 410)
+    );
+    const res = await request(app)
+      .post('/api/v1/auth/set-password')
+      .send({ token: rawToken, password: 'Secret123' });
+    expect(res.status).toBe(410);
+  });
+
+  it('POST /set-password sets password, activates member, consumes token', async () => {
+    authTokenService.verifyToken.mockResolvedValue({ _id: 't1', userId: memberId });
+    const save = jest.fn().mockResolvedValue(undefined);
+    Member.findById.mockReturnValue({
+      select: jest.fn().mockResolvedValue({
+        _id: memberId,
+        invitationStatus: 'pending',
+        save,
+      }),
+    });
+
+    const res = await request(app)
+      .post('/api/v1/auth/set-password')
+      .send({ token: rawToken, password: 'Secret123' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.message).toBe(messages.auth.passwordSet);
+    expect(passwordService.hashPassword).toHaveBeenCalledWith('Secret123');
+    expect(authTokenService.consumeToken).toHaveBeenCalledWith('t1');
+    expect(authTokenService.invalidateOtherTokens).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: memberId, purpose: 'invite', exceptId: 't1' })
+    );
+    expect(save).toHaveBeenCalled();
+  });
+
+  it('POST /set-password returns 400 when member is missing', async () => {
+    authTokenService.verifyToken.mockResolvedValue({ _id: 't1', userId: memberId });
+    Member.findById.mockReturnValue({
+      select: jest.fn().mockResolvedValue(null),
+    });
+
+    const res = await request(app)
+      .post('/api/v1/auth/set-password')
+      .send({ token: rawToken, password: 'Secret123' });
+
+    expect(res.status).toBe(400);
+  });
+
+  // ─── POST /api/v1/auth/forgot-password ──────────────────────────────────
+  it('POST /forgot-password returns 422 when email missing', async () => {
+    const res = await request(app).post('/api/v1/auth/forgot-password').send({});
+    expect(res.status).toBe(422);
+  });
+
+  it('POST /forgot-password returns 200 (no email) when member not found — no enumeration', async () => {
+    Member.findOne.mockResolvedValue(null);
+    const res = await request(app)
+      .post('/api/v1/auth/forgot-password')
+      .send({ email: 'ghost@example.com' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.message).toBe(messages.auth.forgotPasswordAck);
+    expect(authTokenService.issueToken).not.toHaveBeenCalled();
+    expect(emailService.sendResetEmail).not.toHaveBeenCalled();
+  });
+
+  it('POST /forgot-password returns 200 (no email) when member is still pending', async () => {
+    Member.findOne.mockResolvedValue({
+      _id: memberId,
+      personalEmail: 'aisha@example.com',
+      invitationStatus: 'pending',
+      employmentStatus: 'active',
+    });
+    const res = await request(app)
+      .post('/api/v1/auth/forgot-password')
+      .send({ email: 'aisha@example.com' });
+    expect(res.status).toBe(200);
+    expect(authTokenService.issueToken).not.toHaveBeenCalled();
+    expect(emailService.sendResetEmail).not.toHaveBeenCalled();
+  });
+
+  it('POST /forgot-password issues reset token + emails link for active member', async () => {
+    Member.findOne.mockResolvedValue({
+      _id: memberId,
+      personalEmail: 'aisha@example.com',
+      fullName: 'Aisha',
+      invitationStatus: 'active',
+      employmentStatus: 'active',
+    });
+    authTokenService.issueToken.mockResolvedValue({
+      rawToken: 'b'.repeat(64),
+      doc: { _id: 'tok1', expiresAt: new Date(Date.now() + 60 * 60 * 1000) },
+    });
+
+    const res = await request(app)
+      .post('/api/v1/auth/forgot-password')
+      .send({ email: 'aisha@example.com' });
+
+    expect(res.status).toBe(200);
+    expect(authTokenService.invalidateOtherTokens).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: memberId, purpose: 'reset' })
+    );
+    expect(authTokenService.issueToken).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: memberId, purpose: 'reset' })
+    );
+    expect(emailService.sendResetEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'aisha@example.com' })
+    );
+  });
+
+  // ─── POST /api/v1/auth/reset-password ───────────────────────────────────
+  it('POST /reset-password returns 422 for weak password', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/reset-password')
+      .send({ token: rawToken, password: 'short' });
+    expect(res.status).toBe(422);
+    expect(authTokenService.verifyToken).not.toHaveBeenCalled();
+  });
+
+  it('POST /reset-password returns 410 when token expired', async () => {
+    authTokenService.verifyToken.mockRejectedValue(
+      new AppError(messages.errors.authTokenExpired, 410)
+    );
+    const res = await request(app)
+      .post('/api/v1/auth/reset-password')
+      .send({ token: rawToken, password: 'Secret123' });
+    expect(res.status).toBe(410);
+  });
+
+  it('POST /reset-password returns 422 when new password equals current', async () => {
+    authTokenService.verifyToken.mockResolvedValue({ _id: 't1', userId: memberId });
+    Member.findById.mockReturnValue({
+      select: jest.fn().mockResolvedValue({
+        _id: memberId,
+        passwordHash: 'existing-hash',
+        save: jest.fn(),
+      }),
+    });
+    passwordService.comparePassword.mockResolvedValue(true);
+
+    const res = await request(app)
+      .post('/api/v1/auth/reset-password')
+      .send({ token: rawToken, password: 'Secret123' });
+
+    expect(res.status).toBe(422);
+    expect(res.body.data.errors[0].field).toBe('password');
+    expect(passwordService.hashPassword).not.toHaveBeenCalled();
+  });
+
+  it('POST /reset-password sets new hash + bumps tokenVersion + consumes token', async () => {
+    authTokenService.verifyToken.mockResolvedValue({ _id: 't1', userId: memberId });
+    const save = jest.fn().mockResolvedValue(undefined);
+    const memberDoc = {
+      _id: memberId,
+      passwordHash: 'old-hash',
+      tokenVersion: 2,
+      save,
+    };
+    Member.findById.mockReturnValue({ select: jest.fn().mockResolvedValue(memberDoc) });
+    passwordService.comparePassword.mockResolvedValue(false);
+
+    const res = await request(app)
+      .post('/api/v1/auth/reset-password')
+      .send({ token: rawToken, password: 'Secret123' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.message).toBe(messages.auth.passwordReset);
+    expect(passwordService.hashPassword).toHaveBeenCalledWith('Secret123');
+    expect(memberDoc.tokenVersion).toBe(3);
+    expect(memberDoc.passwordHash).toBe('hashed-pw');
+    expect(save).toHaveBeenCalled();
+    expect(authTokenService.consumeToken).toHaveBeenCalledWith('t1');
+  });
+});
+
+describe('Real password login + tokenVersion', () => {
+  const memberId = '507f1f77bcf86cd799439077';
+
+  // Parametrized role-derivation matrix — exhaustively covers the case-insensitive mapping
+  // from member.departmentRoles[].department → JWT role.
+  const roleCases = [
+    { dept: 'Admin', expected: 'admin' },
+    { dept: 'sales', expected: 'sales' },
+    { dept: 'PURCHASE', expected: 'purchase' },
+    { dept: 'Account', expected: 'account' },
+    { dept: 'Accounts', expected: 'account' },
+    { dept: 'Accounting', expected: 'account' },
+    { dept: 'Operations', expected: 'user' },
+    { dept: '', expected: 'user' },
+  ];
+  it.each(roleCases)(
+    'POST /login derives role=$expected when departmentRoles[0].department="$dept"',
+    async ({ dept, expected }) => {
+      Member.findOne.mockReturnValue({
+        select: jest.fn().mockResolvedValue({
+          _id: memberId,
+          personalEmail: 'x@example.com',
+          fullName: 'X',
+          passwordHash: 'hashed-pw',
+          tokenVersion: 0,
+          invitationStatus: 'active',
+          employmentStatus: 'active',
+          departmentRoles: dept ? [{ department: dept, role: 'Role' }] : [],
+          save: jest.fn().mockResolvedValue(undefined),
+        }),
+      });
+      passwordService.comparePassword.mockResolvedValue(true);
+
+      const res = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: 'x@example.com', password: 'Secret123' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.user.role).toBe(expected);
+    }
+  );
+
+  it('POST /login derives role from the first matching department (multi-role member)', async () => {
+    Member.findOne.mockReturnValue({
+      select: jest.fn().mockResolvedValue({
+        _id: memberId,
+        personalEmail: 'multi@example.com',
+        passwordHash: 'hashed-pw',
+        tokenVersion: 0,
+        invitationStatus: 'active',
+        employmentStatus: 'active',
+        departmentRoles: [
+          { department: 'Operations', role: 'Coordinator' },
+          { department: 'Accounts', role: 'Specialist' },
+        ],
+        save: jest.fn().mockResolvedValue(undefined),
+      }),
+    });
+    passwordService.comparePassword.mockResolvedValue(true);
+
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'multi@example.com', password: 'Secret123' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.user.role).toBe('account');
+  });
+
+  it('POST /login with { email, password } looks up member and returns tokens', async () => {
+    const save = jest.fn().mockResolvedValue(undefined);
+    Member.findOne.mockReturnValue({
+      select: jest.fn().mockResolvedValue({
+        _id: memberId,
+        personalEmail: 'aisha@example.com',
+        fullName: 'Aisha Khan',
+        passwordHash: 'hashed-pw',
+        tokenVersion: 0,
+        invitationStatus: 'active',
+        employmentStatus: 'active',
+        departmentRoles: [{ department: 'Sales', role: 'Associate' }],
+        save,
+      }),
+    });
+    passwordService.comparePassword.mockResolvedValue(true);
+
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'Aisha@Example.com', password: 'Secret123' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.accessToken).toBeDefined();
+    expect(res.body.data.user).toMatchObject({
+      id: memberId,
+      email: 'aisha@example.com',
+      role: 'sales',
+      invitationStatus: 'active',
+    });
+    expect(passwordService.comparePassword).toHaveBeenCalledWith('Secret123', 'hashed-pw');
+    expect(save).toHaveBeenCalled();
+  });
+
+  it('POST /login returns 401 for non-existent member (generic message)', async () => {
+    Member.findOne.mockReturnValue({ select: jest.fn().mockResolvedValue(null) });
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'ghost@example.com', password: 'Secret123' });
+    expect(res.status).toBe(401);
+    expect(res.body.data.message).toBe(messages.auth.invalidCredentials);
+  });
+
+  it('POST /login returns 401 for pending member', async () => {
+    Member.findOne.mockReturnValue({
+      select: jest.fn().mockResolvedValue({
+        _id: memberId,
+        passwordHash: 'hash',
+        invitationStatus: 'pending',
+        employmentStatus: 'active',
+      }),
+    });
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'a@b.com', password: 'Secret123' });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /login returns 401 for terminated member', async () => {
+    Member.findOne.mockReturnValue({
+      select: jest.fn().mockResolvedValue({
+        _id: memberId,
+        passwordHash: 'hash',
+        invitationStatus: 'active',
+        employmentStatus: 'terminated',
+      }),
+    });
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'a@b.com', password: 'Secret123' });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /login returns 401 on bad password', async () => {
+    Member.findOne.mockReturnValue({
+      select: jest.fn().mockResolvedValue({
+        _id: memberId,
+        passwordHash: 'hash',
+        invitationStatus: 'active',
+        employmentStatus: 'active',
+        departmentRoles: [{ department: 'Admin', role: 'Admin' }],
+        save: jest.fn(),
+      }),
+    });
+    passwordService.comparePassword.mockResolvedValue(false);
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'a@b.com', password: 'WrongPass1' });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /refresh-token rejects token when tokenVersion is stale', async () => {
+    const save = jest.fn().mockResolvedValue(undefined);
+    Member.findOne.mockReturnValue({
+      select: jest.fn().mockResolvedValue({
+        _id: memberId,
+        personalEmail: 'aisha@example.com',
+        fullName: 'Aisha',
+        passwordHash: 'hashed-pw',
+        tokenVersion: 0,
+        invitationStatus: 'active',
+        employmentStatus: 'active',
+        departmentRoles: [{ department: 'Sales', role: 'Associate' }],
+        save,
+      }),
+    });
+    passwordService.comparePassword.mockResolvedValue(true);
+
+    const loginRes = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'aisha@example.com', password: 'Secret123' });
+    const oldRefresh = loginRes.body.data.refreshToken;
+
+    Member.findById.mockReturnValue({
+      select: jest.fn().mockResolvedValue({
+        _id: memberId,
+        tokenVersion: 1, // bumped after the access token was issued
+        invitationStatus: 'active',
+        employmentStatus: 'active',
+      }),
+    });
+
+    const res = await request(app)
+      .post('/api/v1/auth/refresh-token')
+      .send({ refreshToken: oldRefresh });
+    expect(res.status).toBe(401);
+    expect(res.body.data.message).toBe(messages.auth.invalidOrExpiredRefreshToken);
   });
 });
 
@@ -362,7 +853,12 @@ describe('Members', () => {
 
   it('POST /api/v1/members returns 201 with valid body (admin)', async () => {
     const created = { _id: 'member-mock-id', ...validMemberBody, createdBy: 'member-admin' };
-    memberService.createMember.mockResolvedValue(created);
+    const invite = {
+      sent: true,
+      sentTo: 'ravi.member@test.com',
+      expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    };
+    memberService.createMember.mockResolvedValue({ member: created, invite });
 
     const res = await request(app)
       .post('/api/v1/members')
@@ -373,10 +869,12 @@ describe('Members', () => {
     expect(res.body.status).toBe('success');
     expect(res.body.data.member).toBeDefined();
     expect(res.body.data.member.fullName).toBe('Ravi Kumar');
+    expect(res.body.data.invite).toMatchObject({ sent: true, sentTo: 'ravi.member@test.com' });
     expect(memberService.createMember).toHaveBeenCalledWith({
       ...validMemberBody,
       personalEmail: 'ravi.member@test.com',
       dateOfJoining: expect.any(Date),
+      sendInvite: true,
       createdBy: 'member-admin',
     });
   });
@@ -393,7 +891,10 @@ describe('Members', () => {
       aadharDocumentUrl: '/uploads/members/placeholder.pdf',
       createdBy: 'member-admin',
     };
-    memberService.createMember.mockResolvedValue(created);
+    memberService.createMember.mockResolvedValue({
+      member: created,
+      invite: { sent: true, sentTo: 'formdata.member@test.com', expiresAt: 'iso' },
+    });
 
     const res = await request(app)
       .post('/api/v1/members')
@@ -440,7 +941,10 @@ describe('Members', () => {
       panDocumentUrl: 'https://storage.example.com/docs/pan.png',
     };
     const created = { _id: 'member-mock-2', ...withOptionals, createdBy: 'member-admin' };
-    memberService.createMember.mockResolvedValue(created);
+    memberService.createMember.mockResolvedValue({
+      member: created,
+      invite: { sent: true, sentTo: 'ravi.member@test.com', expiresAt: 'iso' },
+    });
 
     const res = await request(app)
       .post('/api/v1/members')
@@ -454,6 +958,7 @@ describe('Members', () => {
         employeeId: 'EMP-INT-002',
         gender: 'male',
         panDocumentUrl: 'https://storage.example.com/docs/pan.png',
+        sendInvite: true,
         createdBy: 'member-admin',
       })
     );
@@ -716,6 +1221,72 @@ describe('Members', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.status).toBe('fail');
+  });
+
+  // ─── Invite resend + PATCH side effects (passwordflow.md Phase 3) ───────
+  it('PATCH /api/v1/members/:id returns 422 when forbidden fields are present', async () => {
+    const res = await request(app)
+      .patch(`/api/v1/members/${memberDocId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ firstName: 'Foo', passwordHash: 'somehash', invitationStatus: 'active' });
+
+    expect(res.status).toBe(422);
+    expect(res.body.status).toBe('fail');
+    const fields = res.body.data.errors.map((e) => e.field);
+    expect(fields).toEqual(expect.arrayContaining(['passwordHash', 'invitationStatus']));
+    expect(memberService.updateMember).not.toHaveBeenCalled();
+  });
+
+  it('PATCH /api/v1/members/:id accepts safe partial update (admin)', async () => {
+    memberService.updateMember.mockResolvedValue({ _id: memberDocId, firstName: 'Updated' });
+    const res = await request(app)
+      .patch(`/api/v1/members/${memberDocId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ firstName: 'Updated' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.member.firstName).toBe('Updated');
+    expect(memberService.updateMember).toHaveBeenCalledWith(memberDocId, { firstName: 'Updated' });
+  });
+
+  it('POST /api/v1/members/:id/invitations/resend returns 200 with invite', async () => {
+    memberService.resendInvitation.mockResolvedValue({
+      member: { _id: memberDocId, invitationStatus: 'pending' },
+      invite: { sent: true, sentTo: 'aisha@example.com', expiresAt: 'iso' },
+    });
+
+    const res = await request(app)
+      .post(`/api/v1/members/${memberDocId}/invitations/resend`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('success');
+    expect(res.body.data.invite).toMatchObject({ sent: true, sentTo: 'aisha@example.com' });
+    expect(memberService.resendInvitation).toHaveBeenCalledWith(memberDocId, {
+      createdBy: 'member-admin',
+    });
+  });
+
+  it('POST /api/v1/members/:id/invitations/resend returns 409 when member already active', async () => {
+    memberService.resendInvitation.mockRejectedValue(
+      new AppError(messages.auth.inviteAlreadyActive, 409)
+    );
+
+    const res = await request(app)
+      .post(`/api/v1/members/${memberDocId}/invitations/resend`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.data.message).toBe(messages.auth.inviteAlreadyActive);
+  });
+
+  it('POST /api/v1/members/:id/invitations/resend returns 403 for non-admin', async () => {
+    const res = await request(app)
+      .post(`/api/v1/members/${memberDocId}/invitations/resend`)
+      .set('Authorization', `Bearer ${userToken}`);
+
+    expect(res.status).toBe(403);
+    expect(memberService.resendInvitation).not.toHaveBeenCalled();
   });
 });
 

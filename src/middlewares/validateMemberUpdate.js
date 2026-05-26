@@ -79,6 +79,33 @@ const memberUpdateSchema = Joi.object({
   aadharDocumentUrl: optionalMemberDocumentUrl,
   panDocumentUrl: optionalMemberDocumentUrl,
   cancelChequeDocumentUrl: optionalMemberDocumentUrl,
+
+  // Deny-list: protected auth/invitation fields are NEVER accepted via PATCH.
+  // Joi returns 422 (loud) instead of silently stripping — see passwordflow.md §7 Phase 0.
+  passwordHash: Joi.any().forbidden().messages({
+    'any.unknown': messages.validation.password.fieldForbidden,
+  }),
+  invitationStatus: Joi.any().forbidden().messages({
+    'any.unknown': messages.validation.password.fieldForbidden,
+  }),
+  lastInviteSentAt: Joi.any().forbidden().messages({
+    'any.unknown': messages.validation.password.fieldForbidden,
+  }),
+  passwordSetAt: Joi.any().forbidden().messages({
+    'any.unknown': messages.validation.password.fieldForbidden,
+  }),
+  passwordResetAt: Joi.any().forbidden().messages({
+    'any.unknown': messages.validation.password.fieldForbidden,
+  }),
+  lastLoginAt: Joi.any().forbidden().messages({
+    'any.unknown': messages.validation.password.fieldForbidden,
+  }),
+  tokenVersion: Joi.any().forbidden().messages({
+    'any.unknown': messages.validation.password.fieldForbidden,
+  }),
+  loginRole: Joi.any().forbidden().messages({
+    'any.unknown': messages.validation.password.fieldForbidden,
+  }),
 })
   .min(1)
   .messages({

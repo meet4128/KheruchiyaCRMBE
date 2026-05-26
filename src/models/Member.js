@@ -2,6 +2,10 @@ const mongoose = require('mongoose');
 const { MEMBER_GENDER_VALUES } = require('../constants/memberGender');
 const { MEMBER_MARITAL_STATUS_VALUES } = require('../constants/memberMaritalStatus');
 const { MEMBER_EMPLOYMENT_STATUS_VALUES } = require('../constants/memberEmploymentStatus');
+const {
+  MEMBER_INVITATION_STATUS,
+  MEMBER_INVITATION_STATUS_VALUES,
+} = require('../constants/memberInvitationStatus');
 const { messages } = require('../locales');
 
 /** Phone / office line: { countryCode, number } — same shape as Inquiry */
@@ -75,6 +79,22 @@ const memberSchema = new mongoose.Schema(
     aadharDocumentUrl: { type: String, trim: true, set: emptyToUndefined },
     panDocumentUrl: { type: String, trim: true, set: emptyToUndefined },
     cancelChequeDocumentUrl: { type: String, trim: true, set: emptyToUndefined },
+
+    // Auth / invitation lifecycle — managed by backend; never accepted from client payloads
+    passwordHash: { type: String, select: false },
+    invitationStatus: {
+      type: String,
+      enum: MEMBER_INVITATION_STATUS_VALUES,
+      default: MEMBER_INVITATION_STATUS.PENDING,
+      required: true,
+      index: true,
+    },
+    lastInviteSentAt: { type: Date },
+    passwordSetAt: { type: Date },
+    passwordResetAt: { type: Date },
+    lastLoginAt: { type: Date },
+    // Bumped on password reset / sensitive PATCH to invalidate all prior JWTs
+    tokenVersion: { type: Number, default: 0, required: true, min: 0 },
 
     createdBy: { type: String, required: true, trim: true },
   },

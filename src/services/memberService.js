@@ -2,9 +2,78 @@ const mongoose = require('mongoose');
 const Member = require('../models/Member');
 const AppError = require('../utils/AppError');
 const { messages } = require('../locales');
+const { MEMBER_INVITATION_STATUS } = require('../constants/memberInvitationStatus');
+const { AUTH_TOKEN_PURPOSE } = require('../constants/authTokenPurpose');
+const authTokenService = require('./authTokenService');
+const emailService = require('./emailService');
+const { log } = require('../utils/logger');
+
+const TOKEN_VERSION_BUMP_EMPLOYMENT_STATUSES = new Set(['terminated', 'inactive']);
+
+function buildInviteResponse({ rawToken, expiresAt, to, sent = true, devFallback = false }) {
+  if (!sent) return { sent: false };
+  return {
+    sent: true,
+    sentTo: to,
+    expiresAt: expiresAt instanceof Date ? expiresAt.toISOString() : expiresAt,
+    devFallback,
+    // rawToken is included ONLY in non-production for debugging; never in prod
+    ...(process.env.NODE_ENV !== 'production' && rawToken ? { devToken: rawToken } : {}),
+  };
+}
+
+/**
+ * Issues a new invite token for a member, invalidating any prior open invite tokens,
+ * sends the invite email, and stamps lastInviteSentAt.
+ * Returns the invite descriptor (sent / sentTo / expiresAt) and the updated member doc.
+ */
+async function sendInviteToMember(member, { createdBy } = {}) {
+  await authTokenService.invalidateOtherTokens({
+    userId: member._id,
+    purpose: AUTH_TOKEN_PURPOSE.INVITE,
+  });
+
+  const { rawToken, doc: tokenDoc } = await authTokenService.issueToken({
+    userId: member._id,
+    purpose: AUTH_TOKEN_PURPOSE.INVITE,
+    createdBy,
+  });
+
+  const to = member.inviteEmail || member.personalEmail;
+  const link = emailService.buildInviteLink(rawToken);
+
+  let emailResult;
+  try {
+    emailResult = await emailService.sendInviteEmail({
+      to,
+      fullName: member.fullName,
+      link,
+      expiresAt: tokenDoc.expiresAt,
+    });
+  } catch (err) {
+    log.error('invite.send.failed', err?.message || err);
+    throw err;
+  }
+
+  member.lastInviteSentAt = new Date();
+  await member.save();
+
+  log.info(`invite.sent member=${member._id} to=${to}`);
+
+  return {
+    rawToken,
+    invite: buildInviteResponse({
+      rawToken,
+      expiresAt: tokenDoc.expiresAt,
+      to,
+      sent: true,
+      devFallback: emailResult.devFallback,
+    }),
+  };
+}
 
 const createMember = async (payload) => {
-  const { employeeId, personalEmail } = payload;
+  const { employeeId, personalEmail, sendInvite = true, inviteEmail, ...rest } = payload;
 
   const existingId = await Member.findOne({ employeeId });
   if (existingId) {
@@ -16,8 +85,21 @@ const createMember = async (payload) => {
     throw new AppError(messages.errors.personalEmailExists, 409);
   }
 
-  const member = await Member.create(payload);
-  return member;
+  const member = await Member.create({
+    ...rest,
+    employeeId,
+    personalEmail,
+    invitationStatus: MEMBER_INVITATION_STATUS.PENDING,
+  });
+
+  if (!sendInvite) {
+    return { member, invite: { sent: false } };
+  }
+
+  // Attach inviteEmail transiently for downstream sendInviteToMember (not persisted)
+  member.inviteEmail = inviteEmail || personalEmail;
+  const { invite } = await sendInviteToMember(member, { createdBy: payload.createdBy });
+  return { member, invite };
 };
 
 const updateMember = async (id, updates) => {
@@ -50,13 +132,76 @@ const updateMember = async (id, updates) => {
     }
   }
 
-  const member = await Member.findByIdAndUpdate(
-    id,
-    { $set: updates },
-    { new: true, runValidators: true }
-  );
+  const emailChanged = updates.personalEmail && updates.personalEmail !== existing.personalEmail;
+  const employmentChanged =
+    updates.employmentStatus && updates.employmentStatus !== existing.employmentStatus;
+  const employmentNowBlocked =
+    employmentChanged &&
+    TOKEN_VERSION_BUMP_EMPLOYMENT_STATUSES.has(String(updates.employmentStatus).toLowerCase());
+
+  const wasPending = existing.invitationStatus === MEMBER_INVITATION_STATUS.PENDING;
+  const wasActive = existing.invitationStatus === MEMBER_INVITATION_STATUS.ACTIVE;
+
+  const setOps = { ...updates };
+  const incOps = {};
+
+  // PATCH side effects (passwordflow.md §7 Phase 0)
+  if (emailChanged && wasActive) {
+    incOps.tokenVersion = (incOps.tokenVersion || 0) + 1;
+  }
+  if (employmentNowBlocked) {
+    incOps.tokenVersion = (incOps.tokenVersion || 0) + 1;
+  }
+
+  const update = { $set: setOps };
+  if (Object.keys(incOps).length > 0) update.$inc = incOps;
+
+  let member = await Member.findByIdAndUpdate(id, update, {
+    new: true,
+    runValidators: true,
+  });
+
+  // For pending members whose email changed: invalidate old invites and auto-resend to the new address
+  if (emailChanged && wasPending) {
+    await authTokenService.invalidateOtherTokens({
+      userId: member._id,
+      purpose: AUTH_TOKEN_PURPOSE.INVITE,
+    });
+    member.inviteEmail = updates.personalEmail;
+    try {
+      await sendInviteToMember(member);
+      member = await Member.findById(id);
+    } catch (err) {
+      log.error('invite.autoresend.failed', err?.message || err);
+    }
+  }
+
+  if (emailChanged && wasActive) {
+    log.info(`auth.tokenVersion.bumped reason=emailChanged member=${member._id}`);
+  }
+  if (employmentNowBlocked) {
+    log.info(
+      `auth.tokenVersion.bumped reason=employmentStatus=${updates.employmentStatus} member=${member._id}`
+    );
+  }
 
   return member;
+};
+
+const resendInvitation = async (id, { createdBy } = {}) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new AppError(messages.errors.invalidIdOrFormat, 400);
+  }
+  const member = await Member.findById(id);
+  if (!member) {
+    throw new AppError(messages.errors.memberNotFound, 404);
+  }
+  if (member.invitationStatus !== MEMBER_INVITATION_STATUS.PENDING) {
+    throw new AppError(messages.auth.inviteAlreadyActive, 409);
+  }
+  const { invite } = await sendInviteToMember(member, { createdBy });
+  log.info(`invite.resent member=${member._id} by=${createdBy || 'unknown'}`);
+  return { member, invite };
 };
 
 const deleteMember = async (id) => {
@@ -201,4 +346,11 @@ const getMembersDirectory = async (queryParams = {}) => {
   };
 };
 
-module.exports = { createMember, updateMember, deleteMember, getMembers, getMembersDirectory };
+module.exports = {
+  createMember,
+  updateMember,
+  resendInvitation,
+  deleteMember,
+  getMembers,
+  getMembersDirectory,
+};

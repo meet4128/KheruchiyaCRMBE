@@ -68,6 +68,37 @@ if (process.env.NODE_ENV !== 'test') {
   app.use('/api/v1/auth/refresh-token', refreshLimiter);
 }
 
+// Invite resend: 5 per minute per IP to prevent email-blast abuse (passwordflow.md §10)
+const resendInviteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  message: { status: 'error', message: messages.rateLimit.tooManyResendInviteAttempts },
+});
+if (process.env.NODE_ENV !== 'test') {
+  app.use(/^\/api\/v1\/members\/[^/]+\/invitations\/resend$/, resendInviteLimiter);
+}
+
+// set-password / reset-password: 10 attempts per 15 min per IP (token guesser protection)
+const setPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { status: 'error', message: messages.rateLimit.tooManyRequests },
+});
+if (process.env.NODE_ENV !== 'test') {
+  app.use('/api/v1/auth/set-password', setPasswordLimiter);
+  app.use('/api/v1/auth/reset-password', setPasswordLimiter);
+}
+
+// forgot-password: 5 per 15 min per IP — combined with always-200 to thwart enumeration
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { status: 'error', message: messages.rateLimit.tooManyForgotAttempts },
+});
+if (process.env.NODE_ENV !== 'test') {
+  app.use('/api/v1/auth/forgot-password', forgotPasswordLimiter);
+}
+
 // Swagger API docs
 app.use(
   '/api-docs',

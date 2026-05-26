@@ -1,6 +1,3 @@
-const memberService = require('../memberService');
-const { messages } = require('../../locales');
-
 jest.mock('../../models/Member', () => ({
   findOne: jest.fn(),
   findById: jest.fn(),
@@ -11,11 +8,35 @@ jest.mock('../../models/Member', () => ({
   create: jest.fn(),
 }));
 
+jest.mock('../authTokenService', () => ({
+  issueToken: jest.fn(),
+  invalidateOtherTokens: jest.fn(),
+}));
+
+jest.mock('../emailService', () => ({
+  buildInviteLink: jest.fn().mockReturnValue('http://localhost:3000/set-password?token=x'),
+  buildResetLink: jest.fn().mockReturnValue('http://localhost:3000/reset-password?token=x'),
+  sendInviteEmail: jest.fn().mockResolvedValue({ id: 'em_1', devFallback: false }),
+  sendResetEmail: jest.fn().mockResolvedValue({ id: 'em_2', devFallback: false }),
+}));
+
+const memberService = require('../memberService');
+const { messages } = require('../../locales');
 const Member = require('../../models/Member');
+const authTokenService = require('../authTokenService');
+const emailService = require('../emailService');
 
 describe('memberService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    authTokenService.invalidateOtherTokens.mockResolvedValue({
+      matchedCount: 0,
+      modifiedCount: 0,
+    });
+    authTokenService.issueToken.mockResolvedValue({
+      rawToken: 'a'.repeat(64),
+      doc: { _id: 't1', expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000) },
+    });
   });
 
   describe('createMember', () => {
@@ -62,15 +83,68 @@ describe('memberService', () => {
       expect(Member.create).not.toHaveBeenCalled();
     });
 
-    it('creates member when employee ID and email are unique', async () => {
+    it('creates member when employee ID and email are unique (sendInvite=true by default)', async () => {
       Member.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
-      const saved = { _id: 'new-id', ...validPayload };
+      const saved = {
+        _id: 'new-id',
+        ...validPayload,
+        invitationStatus: 'pending',
+        save: jest.fn().mockResolvedValue(undefined),
+      };
       Member.create.mockResolvedValue(saved);
 
       const result = await memberService.createMember(validPayload);
 
-      expect(result).toEqual(saved);
-      expect(Member.create).toHaveBeenCalledWith(validPayload);
+      expect(result.member).toBe(saved);
+      expect(result.invite.sent).toBe(true);
+      expect(result.invite.sentTo).toBe('ravi@example.com');
+      expect(Member.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          employeeId: 'EMP-1001',
+          personalEmail: 'ravi@example.com',
+          invitationStatus: 'pending',
+        })
+      );
+      expect(authTokenService.issueToken).toHaveBeenCalledTimes(1);
+      expect(emailService.sendInviteEmail).toHaveBeenCalledTimes(1);
+      expect(saved.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips invite email when sendInvite=false', async () => {
+      Member.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+      const saved = {
+        _id: 'new-id-2',
+        ...validPayload,
+        save: jest.fn().mockResolvedValue(undefined),
+      };
+      Member.create.mockResolvedValue(saved);
+
+      const result = await memberService.createMember({ ...validPayload, sendInvite: false });
+
+      expect(result.member).toBe(saved);
+      expect(result.invite).toEqual({ sent: false });
+      expect(authTokenService.issueToken).not.toHaveBeenCalled();
+      expect(emailService.sendInviteEmail).not.toHaveBeenCalled();
+    });
+
+    it('uses inviteEmail override when provided', async () => {
+      Member.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+      const saved = {
+        _id: 'new-id-3',
+        ...validPayload,
+        save: jest.fn().mockResolvedValue(undefined),
+      };
+      Member.create.mockResolvedValue(saved);
+
+      const result = await memberService.createMember({
+        ...validPayload,
+        inviteEmail: 'work@example.com',
+      });
+
+      expect(result.invite.sentTo).toBe('work@example.com');
+      expect(emailService.sendInviteEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'work@example.com' })
+      );
     });
   });
 
@@ -146,6 +220,132 @@ describe('memberService', () => {
         { $set: { firstName: 'Updated' } },
         { new: true, runValidators: true }
       );
+    });
+
+    it('bumps tokenVersion when personalEmail changes on an active member', async () => {
+      Member.findById.mockResolvedValue({
+        _id: id,
+        employeeId: 'E1',
+        personalEmail: 'old@example.com',
+        invitationStatus: 'active',
+      });
+      Member.findOne.mockResolvedValue(null);
+      Member.findByIdAndUpdate.mockResolvedValue({ _id: id, personalEmail: 'new@example.com' });
+
+      await memberService.updateMember(id, { personalEmail: 'new@example.com' });
+
+      expect(Member.findByIdAndUpdate).toHaveBeenCalledWith(
+        id,
+        expect.objectContaining({
+          $set: { personalEmail: 'new@example.com' },
+          $inc: { tokenVersion: 1 },
+        }),
+        { new: true, runValidators: true }
+      );
+      expect(authTokenService.invalidateOtherTokens).not.toHaveBeenCalled();
+    });
+
+    it('auto-resends invite when personalEmail changes on a pending member', async () => {
+      Member.findById
+        .mockResolvedValueOnce({
+          _id: id,
+          employeeId: 'E1',
+          personalEmail: 'old@example.com',
+          invitationStatus: 'pending',
+        })
+        .mockResolvedValueOnce({
+          _id: id,
+          personalEmail: 'new@example.com',
+          invitationStatus: 'pending',
+        });
+      Member.findOne.mockResolvedValue(null);
+      Member.findByIdAndUpdate.mockResolvedValue({
+        _id: id,
+        personalEmail: 'new@example.com',
+        invitationStatus: 'pending',
+        fullName: 'Aisha',
+        save: jest.fn().mockResolvedValue(undefined),
+      });
+
+      await memberService.updateMember(id, { personalEmail: 'new@example.com' });
+
+      expect(authTokenService.invalidateOtherTokens).toHaveBeenCalledWith(
+        expect.objectContaining({ purpose: 'invite' })
+      );
+      expect(authTokenService.issueToken).toHaveBeenCalled();
+      expect(emailService.sendInviteEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'new@example.com' })
+      );
+    });
+
+    it('bumps tokenVersion when employmentStatus changes to terminated', async () => {
+      Member.findById.mockResolvedValue({
+        _id: id,
+        employeeId: 'E1',
+        personalEmail: 'e@example.com',
+        employmentStatus: 'active',
+        invitationStatus: 'active',
+      });
+      Member.findByIdAndUpdate.mockResolvedValue({ _id: id, employmentStatus: 'terminated' });
+
+      await memberService.updateMember(id, { employmentStatus: 'terminated' });
+
+      expect(Member.findByIdAndUpdate).toHaveBeenCalledWith(
+        id,
+        expect.objectContaining({
+          $set: { employmentStatus: 'terminated' },
+          $inc: { tokenVersion: 1 },
+        }),
+        { new: true, runValidators: true }
+      );
+    });
+  });
+
+  describe('resendInvitation', () => {
+    const id = '507f1f77bcf86cd799439011';
+
+    it('throws 400 on invalid id', async () => {
+      await expect(memberService.resendInvitation('bad-id')).rejects.toMatchObject({
+        statusCode: 400,
+      });
+    });
+
+    it('throws 404 when member missing', async () => {
+      Member.findById.mockResolvedValue(null);
+      await expect(memberService.resendInvitation(id)).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('throws 409 when member already active', async () => {
+      Member.findById.mockResolvedValue({
+        _id: id,
+        invitationStatus: 'active',
+        save: jest.fn(),
+      });
+      await expect(memberService.resendInvitation(id)).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('issues a new invite for a pending member and returns invite descriptor', async () => {
+      const member = {
+        _id: id,
+        invitationStatus: 'pending',
+        personalEmail: 'aisha@example.com',
+        fullName: 'Aisha',
+        save: jest.fn().mockResolvedValue(undefined),
+      };
+      Member.findById.mockResolvedValue(member);
+
+      const result = await memberService.resendInvitation(id, { createdBy: 'admin-1' });
+
+      expect(authTokenService.invalidateOtherTokens).toHaveBeenCalled();
+      expect(authTokenService.issueToken).toHaveBeenCalledWith(
+        expect.objectContaining({ purpose: 'invite', createdBy: 'admin-1' })
+      );
+      expect(emailService.sendInviteEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'aisha@example.com' })
+      );
+      expect(result.invite.sent).toBe(true);
+      expect(result.invite.sentTo).toBe('aisha@example.com');
+      expect(member.save).toHaveBeenCalled();
     });
   });
 

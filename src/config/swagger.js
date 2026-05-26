@@ -137,18 +137,95 @@ const options = {
           properties: {
             id: { type: 'string' },
             email: { type: 'string' },
-            role: { type: 'string' },
+            role: {
+              type: 'string',
+              enum: ['admin', 'sales', 'purchase', 'account', 'user'],
+              description:
+                "Derived at login from the member's departmentRoles[].department (case-insensitive): Admin→admin, Sales→sales, Purchase→purchase, Account/Accounts/Accounting→account, else→user",
+            },
+            tokenVersion: { type: 'integer', minimum: 0 },
+            fullName: { type: 'string' },
+            invitationStatus: { type: 'string', enum: ['pending', 'active', 'suspended'] },
           },
         },
         LoginRequest: {
           type: 'object',
+          description:
+            'Dual-mode body: send `{ email, password }` for real auth, or `{ userId, email?, role? }` for the dev/test stub (non-production only).',
           properties: {
-            userId: { type: 'string', example: 'dev-user' },
-            email: { type: 'string', example: 'dev@example.com' },
+            email: { type: 'string', format: 'email', example: 'aisha@example.com' },
+            password: {
+              type: 'string',
+              minLength: 8,
+              maxLength: 128,
+              example: 'Secret123',
+              description: 'Required for real-auth login; omit for dev stub',
+            },
+            userId: { type: 'string', example: 'dev-user', description: 'Dev stub only' },
             role: {
               type: 'string',
-              enum: ['admin', 'sales', 'purchase', 'user'],
+              enum: ['admin', 'sales', 'purchase', 'account', 'user'],
               example: 'user',
+              description: 'Dev stub only. In real-auth mode the role is derived from the DB.',
+            },
+          },
+        },
+        SetPasswordRequest: {
+          type: 'object',
+          required: ['token', 'password'],
+          properties: {
+            token: {
+              type: 'string',
+              pattern: '^[a-f0-9]{64}$',
+              description: '64-hex-char raw token from the invite email link',
+            },
+            password: {
+              type: 'string',
+              minLength: 8,
+              maxLength: 128,
+              description: 'Must contain at least one letter and one digit',
+              example: 'Secret123',
+            },
+          },
+        },
+        ResetPasswordRequest: {
+          type: 'object',
+          required: ['token', 'password'],
+          properties: {
+            token: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+            password: { type: 'string', minLength: 8, maxLength: 128, example: 'NewSecret123' },
+          },
+        },
+        ForgotPasswordRequest: {
+          type: 'object',
+          required: ['email'],
+          properties: {
+            email: { type: 'string', format: 'email', example: 'aisha@example.com' },
+          },
+        },
+        TokenValidateResponse: {
+          type: 'object',
+          properties: {
+            valid: { type: 'boolean', example: true },
+            purpose: { type: 'string', enum: ['invite', 'reset'] },
+            email: {
+              type: 'string',
+              description: 'Masked form, e.g. "a****@example.com"',
+              example: 'a****@example.com',
+            },
+            expiresAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        InviteResult: {
+          type: 'object',
+          properties: {
+            sent: { type: 'boolean', example: true },
+            sentTo: { type: 'string', format: 'email', example: 'aisha@example.com' },
+            expiresAt: { type: 'string', format: 'date-time' },
+            devFallback: {
+              type: 'boolean',
+              description:
+                'true when no RESEND_API_KEY is configured (dev) and the link was only logged to console',
             },
           },
         },
@@ -438,12 +515,25 @@ const options = {
               type: 'string',
               example: '/uploads/members/1730000002-ghi.png',
             },
+            sendInvite: {
+              type: 'boolean',
+              default: true,
+              description:
+                'When true (default) the backend issues a single-use invite token (72h TTL) and emails a set-password link. Pass false to skip the email (member will need a manual resend later).',
+            },
+            inviteEmail: {
+              type: 'string',
+              format: 'email',
+              description:
+                'Optional. Overrides `personalEmail` as the invite recipient. Not persisted to the Member document.',
+            },
           },
         },
         MemberUpdate: {
           type: 'object',
           minProperties: 1,
-          description: 'At least one field required. All properties optional (partial update).',
+          description:
+            'At least one field required. All properties optional (partial update).\n\n**Forbidden fields (loud 422):** `passwordHash`, `invitationStatus`, `lastInviteSentAt`, `passwordSetAt`, `passwordResetAt`, `lastLoginAt`, `tokenVersion`, `loginRole`. These are managed by the auth/password endpoints and cannot be set via PATCH.\n\n**Side effects:**\n- Changing `personalEmail` while `invitationStatus=pending` auto-invalidates old invite tokens and re-sends the invite to the new address.\n- Changing `personalEmail` while `invitationStatus=active` bumps `tokenVersion` (forces re-login).\n- Changing `employmentStatus` to `terminated`/`inactive` bumps `tokenVersion`.',
           properties: {
             fullName: { type: 'string' },
             personalEmail: { type: 'string', format: 'email' },
@@ -485,7 +575,11 @@ const options = {
     },
     tags: [
       { name: 'Health', description: 'Liveness and readiness' },
-      { name: 'Auth', description: 'Authentication endpoints' },
+      {
+        name: 'Auth',
+        description:
+          'Authentication: login, refresh, me, password set/reset (invite + forgot flows).',
+      },
       { name: 'Inquiries', description: 'Inquiry management' },
       {
         name: 'Amendments',
@@ -607,8 +701,9 @@ const spec = {
     '/api/v1/auth/login': {
       post: {
         tags: ['Auth'],
-        summary: 'Login',
-        description: 'Dev login - returns access and refresh tokens. Blocked in production.',
+        summary: 'Login (real password OR dev stub)',
+        description:
+          'Real auth: send `{ email, password }` — looks up Member by `personalEmail`, verifies bcrypt hash, derives JWT role from `departmentRoles[].department` (case-insensitive): **Admin → admin, Sales → sales, Purchase → purchase, Account / Accounts / Accounting → account, else → user**. First-match wins. Tokens embed `tokenVersion` so password resets and admin-driven changes invalidate prior sessions. Returns 401 (generic) when credentials are invalid, the member is not `invitationStatus=active`, or `employmentStatus !== active`.\n\nDev stub: when no `password` is provided AND `NODE_ENV !== production`, returns synthetic tokens for the given `userId`/`email`/`role` (used by tests/local). Returns 501 in production.',
         requestBody: {
           content: {
             'application/json': {
@@ -726,6 +821,114 @@ const spec = {
             },
           },
           401: { description: 'Authentication required' },
+        },
+      },
+    },
+    '/api/v1/auth/token/validate': {
+      get: {
+        tags: ['Auth'],
+        summary: 'Validate invite / reset token (public)',
+        description:
+          'Public endpoint used by the frontend to validate a single-use token before rendering the password form. Returns the token purpose, masked email, and expiry. Token state is checked: 400 for malformed/unknown, 410 for already-used or expired.',
+        parameters: [
+          {
+            name: 'token',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+          },
+          {
+            name: 'purpose',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', enum: ['invite', 'reset'] },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Token is valid',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: { $ref: '#/components/schemas/TokenValidateResponse' },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Token malformed or unknown' },
+          410: { description: 'Token already used or expired' },
+          422: { description: 'Validation failed' },
+        },
+      },
+    },
+    '/api/v1/auth/set-password': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Set password (invite flow, public)',
+        description:
+          'Completes the admin-invite flow. Hashes the password with bcrypt (cost 12), sets `passwordHash`, marks `invitationStatus=active`, stamps `passwordSetAt`, consumes the token, and invalidates other open invite tokens. Rate-limited (10 / 15 min / IP).',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/SetPasswordRequest' },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Password set; member is now active' },
+          400: { description: 'Token malformed or member missing' },
+          410: { description: 'Token already used or expired' },
+          422: { description: 'Validation failed (weak password or missing fields)' },
+          429: { description: 'Rate limit exceeded' },
+        },
+      },
+    },
+    '/api/v1/auth/forgot-password': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Forgot password (public, always 200)',
+        description:
+          'Issues a 1-hour `reset` token + sends an email if the member exists and is active. ALWAYS returns 200 with a generic message to prevent email enumeration. Rate-limited (5 / 15 min / IP).',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ForgotPasswordRequest' },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Acknowledged (generic message — does not reveal account state)' },
+          422: { description: 'Validation failed' },
+          429: { description: 'Rate limit exceeded' },
+        },
+      },
+    },
+    '/api/v1/auth/reset-password': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Reset password (public)',
+        description:
+          'Completes the forgot-password flow. Refuses if new password equals current hash. On success bumps `Member.tokenVersion` (invalidating all prior JWTs), consumes the token, and invalidates other open reset tokens. Rate-limited (10 / 15 min / IP).',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ResetPasswordRequest' },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Password updated; all prior sessions invalidated' },
+          400: { description: 'Token malformed or member missing' },
+          410: { description: 'Token already used or expired' },
+          422: { description: 'Validation failed (weak password, or same-as-old)' },
+          429: { description: 'Rate limit exceeded' },
         },
       },
     },
@@ -1518,9 +1721,9 @@ const spec = {
       },
       post: {
         tags: ['Members'],
-        summary: 'Create member',
+        summary: 'Create member (and send invite email)',
         description:
-          'Create a new member record. **Requires `admin` role.**\n\n- **`application/json`:** body matches **MemberCreate** (optional `*DocumentUrl` as https or `/uploads/members/...`).\n- **`multipart/form-data`:** same fields as plain text; **`phoneNumber`**, **`homePhoneNumber`**, **`officePhoneNumber`**, and **`departmentRoles`** must be **JSON strings**; attach optional files **`aadharCard`**, **`panCard`**, **`cancelCheque`** (PDF or image). `createdBy` is never sent by the client.',
+          'Create a new member record. **Requires `admin` role.**\n\nBy default the backend also (a) creates the member with `invitationStatus=pending`, (b) issues a 72h single-use invite token, (c) sends a `Set your password` email to `inviteEmail || personalEmail` via Resend, and (d) stamps `lastInviteSentAt`. Pass `sendInvite=false` to skip the email; the admin can then call `POST /api/v1/members/{id}/invitations/resend` later.\n\n- **`application/json`:** body matches **MemberCreate** (includes optional `sendInvite`, `inviteEmail`, and optional `*DocumentUrl` as https or `/uploads/members/...`).\n- **`multipart/form-data`:** same fields as plain text; **`phoneNumber`**, **`homePhoneNumber`**, **`officePhoneNumber`**, and **`departmentRoles`** must be **JSON strings**; **`sendInvite`** is sent as `"true"`/`"false"` (coerced server-side); attach optional files **`aadharCard`**, **`panCard`**, **`cancelCheque`** (PDF or image). `createdBy` is never sent by the client.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1563,6 +1766,8 @@ const spec = {
                   aadharCard: { type: 'string', format: 'binary', description: 'PDF or image' },
                   panCard: { type: 'string', format: 'binary' },
                   cancelCheque: { type: 'string', format: 'binary' },
+                  sendInvite: { type: 'string', example: 'true', description: '"true" / "false"' },
+                  inviteEmail: { type: 'string' },
                 },
               },
             },
@@ -1570,7 +1775,7 @@ const spec = {
         },
         responses: {
           201: {
-            description: 'Member created',
+            description: 'Member created (and invite email sent unless sendInvite=false)',
             content: {
               'application/json': {
                 schema: {
@@ -1581,6 +1786,7 @@ const spec = {
                       type: 'object',
                       properties: {
                         member: { type: 'object', description: 'Persisted member document' },
+                        invite: { $ref: '#/components/schemas/InviteResult' },
                       },
                     },
                   },
@@ -1595,12 +1801,56 @@ const spec = {
         },
       },
     },
+    '/api/v1/members/{id}/invitations/resend': {
+      post: {
+        tags: ['Members'],
+        summary: 'Resend invite email',
+        description:
+          'Re-issues a fresh 72h invite token for a member whose `invitationStatus` is `pending`, invalidates any prior open invite tokens, and re-sends the `Set your password` email. **Requires `admin` JWT.** Rate-limited (5 / minute / IP).',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', example: '507f1f77bcf86cd799439011' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Invite re-sent',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        member: { type: 'object' },
+                        invite: { $ref: '#/components/schemas/InviteResult' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden (not admin)' },
+          404: { description: 'Member not found' },
+          409: { description: 'Member is already active' },
+          429: { description: 'Rate limit exceeded' },
+        },
+      },
+    },
     '/api/v1/members/{id}': {
       patch: {
         tags: ['Members'],
         summary: 'Update member',
         description:
-          'Partial update of a member. **Requires `admin` JWT.** Use **`application/json`** (**MemberUpdate**) or **`multipart/form-data`** (same fields as text; nested objects as JSON strings; optional **`aadharCard`**, **`panCard`**, **`cancelCheque`** files).',
+          'Partial update of a member. **Requires `admin` JWT.** Use **`application/json`** (**MemberUpdate**) or **`multipart/form-data`** (same fields as text; nested objects as JSON strings; optional **`aadharCard`**, **`panCard`**, **`cancelCheque`** files).\n\nAttempting to set protected auth fields (`passwordHash`, `invitationStatus`, `tokenVersion`, `lastInviteSentAt`, `passwordSetAt`, `passwordResetAt`, `lastLoginAt`, `loginRole`) returns **422**. Changing `personalEmail` or `employmentStatus` may trigger token-version bumps or automatic invite re-sends — see **MemberUpdate** description.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {

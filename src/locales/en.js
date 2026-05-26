@@ -106,6 +106,19 @@ module.exports = {
       mediaUrlInvalid:
         'mediaUrl must be a path from POST .../purchase-chats/{purchaseTeamMemberId}/uploads',
     },
+    password: {
+      tokenRequired: 'Token is required',
+      tokenInvalid: 'Token format is invalid',
+      purposeRequired: 'Purpose is required',
+      purposeInvalid: 'Purpose must be invite or reset',
+      passwordRequired: 'Password is required',
+      lengthInvalid: 'Password must be between 8 and 128 characters',
+      strengthInvalid: 'Password must contain at least one letter and one digit',
+      sameAsOld: 'New password must be different from the current password',
+      emailRequired: 'Email is required',
+      emailInvalid: 'Please provide a valid email',
+      fieldForbidden: 'This field cannot be set via this endpoint',
+    },
   },
 
   // ─── Auth messages ───────────────────────────────────────────────────────
@@ -113,12 +126,20 @@ module.exports = {
     authenticationRequired: 'Authentication required',
     invalidOrExpiredToken: 'Invalid or expired token',
     refreshTokenRequired: 'Refresh token is required',
-    invalidRole: 'Role must be one of: admin, sales, purchase, user',
+    invalidRole: 'Role must be one of: admin, sales, purchase, account, user',
     invalidRefreshToken: 'Invalid refresh token',
     invalidOrExpiredRefreshToken: 'Invalid or expired refresh token',
     loginNotImplemented:
       'Login not implemented. Implement proper authentication before deploying to production.',
     insufficientRole: 'You do not have permission to perform this action',
+    invalidCredentials: 'Invalid email or password',
+    accountNotActive: 'Account is not active. Please complete the invite flow or contact admin.',
+    passwordSet: 'Password set successfully',
+    passwordReset: 'Password reset successfully',
+    forgotPasswordAck: 'If an account with that email exists, a password reset link has been sent.',
+    inviteSent: 'Invitation email sent',
+    inviteResent: 'Invitation email re-sent',
+    inviteAlreadyActive: 'Member account is already active; cannot resend invite',
   },
 
   // ─── Error messages (global, service, model) ─────────────────────────────
@@ -135,6 +156,14 @@ module.exports = {
     amendmentSessionFinalized: 'This chat session is finalized; start a new session',
     somethingWentWrong: 'Something went wrong',
     invalidIdOrFormat: 'Invalid ID or data format',
+    authTokenInvalid: 'Token is invalid',
+    authTokenExpired: 'Token has expired. Please request a new link.',
+    authTokenAlreadyUsed: 'This link has already been used. Please request a new one.',
+    authTokenPurposeInvalid: 'Token purpose is invalid',
+    authTokenUserIdRequired: 'userId is required to issue a token',
+    emailRecipientRequired: 'Email recipient is required',
+    emailLinkRequired: 'Email link is required',
+    emailSendFailed: 'Failed to send email. Please try again later.',
   },
 
   // ─── Rate limit messages ─────────────────────────────────────────────────
@@ -142,6 +171,10 @@ module.exports = {
     tooManyRequests: 'Too many requests, please try again later.',
     tooManyLoginAttempts: 'Too many login attempts, please try again later.',
     tooManyRefreshAttempts: 'Too many refresh attempts, please try again later.',
+    tooManyForgotAttempts:
+      'Too many password reset requests. Please wait a few minutes and try again.',
+    tooManyResendInviteAttempts:
+      'Too many invite resend attempts. Please wait a minute and try again.',
   },
 
   // ─── MongoDB / startup messages ───────────────────────────────────────────
@@ -158,6 +191,8 @@ module.exports = {
     jwtSecretRequired: 'JWT_SECRET is required in production. Set it in your .env file.',
     jwtRefreshSecretRequired:
       'JWT_REFRESH_SECRET is required in production. Set it in your .env file.',
+    resendApiKeyRequired: 'RESEND_API_KEY is required in production. Set it in your .env file.',
+    appBaseUrlRequired: 'APP_BASE_URL is required in production. Set it in your .env file.',
   },
 
   // ─── Mongoose model validation ───────────────────────────────────────────

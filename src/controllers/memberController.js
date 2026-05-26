@@ -9,12 +9,13 @@ const createMember = asyncHandler(async (req, res) => {
     createdBy: userId,
   };
 
-  const member = await memberService.createMember(payload);
+  const { member, invite } = await memberService.createMember(payload);
 
   res.status(201).json({
     status: 'success',
     data: {
       member,
+      invite,
     },
   });
 });
@@ -27,6 +28,21 @@ const updateMember = asyncHandler(async (req, res) => {
     status: 'success',
     data: {
       member,
+    },
+  });
+});
+
+const resendInvitation = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { member, invite } = await memberService.resendInvitation(id, {
+    createdBy: req.user?.id,
+  });
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      member,
+      invite,
     },
   });
 });
@@ -98,6 +114,7 @@ const uploadMemberDocuments = asyncHandler(async (req, res) => {
 module.exports = {
   createMember,
   updateMember,
+  resendInvitation,
   deleteMember,
   getMembers,
   getMembersDirectory,
