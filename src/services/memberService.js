@@ -129,4 +129,76 @@ const getMembers = async (queryParams = {}) => {
   };
 };
 
-module.exports = { createMember, updateMember, deleteMember, getMembers };
+const DIRECTORY_SELECT =
+  '_id fullName firstName lastName employeeId designation employmentStatus departmentRoles officePhoneNumber phoneNumber personalEmail city';
+
+const escapeRegex = (value) =>
+  String(value)
+    .slice(0, 64)
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Read-only member list for sales/purchase team pickers (no document URLs or home PII).
+ * @param {{ department: string, role?: string, employmentStatus?: string, page?: number, limit?: number, search?: string }} queryParams
+ */
+const getMembersDirectory = async (queryParams = {}) => {
+  const {
+    department,
+    role,
+    employmentStatus = 'active',
+    page = 1,
+    limit = 50,
+    search,
+  } = queryParams;
+
+  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+  const limitNum = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
+  const skip = (pageNum - 1) * limitNum;
+
+  const deptRe = new RegExp(`^${escapeRegex(department)}$`, 'i');
+  const elemMatch = { department: deptRe };
+  if (role) {
+    elemMatch.role = new RegExp(`^${escapeRegex(role)}$`, 'i');
+  }
+
+  const filter = {
+    departmentRoles: { $elemMatch: elemMatch },
+  };
+  if (employmentStatus) {
+    filter.employmentStatus = employmentStatus;
+  }
+  if (search) {
+    const sanitized = escapeRegex(search);
+    const re = new RegExp(sanitized, 'i');
+    filter.$or = [
+      { fullName: re },
+      { personalEmail: re },
+      { employeeId: re },
+      { designation: re },
+      { 'phoneNumber.number': re },
+      { 'officePhoneNumber.number': re },
+    ];
+  }
+
+  const query = Member.find(filter)
+    .select(DIRECTORY_SELECT)
+    .skip(skip)
+    .limit(limitNum)
+    .sort({ fullName: 1 })
+    .lean();
+
+  const [items, totalItems] = await Promise.all([query.exec(), Member.countDocuments(filter)]);
+  const totalPages = Math.ceil(totalItems / limitNum) || 1;
+
+  return {
+    items,
+    department,
+    role: role || null,
+    page: pageNum,
+    limit: limitNum,
+    totalItems,
+    totalPages,
+  };
+};
+
+module.exports = { createMember, updateMember, deleteMember, getMembers, getMembersDirectory };

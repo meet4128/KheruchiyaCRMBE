@@ -68,9 +68,9 @@ describe('whatsappInboundMedia', () => {
 
     const absolutePath = path.join(process.cwd(), result.mediaUrl);
     expect(fs.existsSync(absolutePath)).toBe(true);
-    fs.unlinkSync(absolutePath);
-    fs.rmdirSync(path.dirname(absolutePath));
-    fs.rmdirSync(path.dirname(path.dirname(absolutePath)));
-    fs.rmdirSync(path.dirname(path.dirname(path.dirname(absolutePath))));
+    fs.rmSync(path.join(process.cwd(), 'uploads', 'amendments', 'inbound'), {
+      recursive: true,
+      force: true,
+    });
   });
 });

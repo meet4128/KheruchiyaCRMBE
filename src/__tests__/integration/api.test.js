@@ -15,6 +15,7 @@ jest.mock('../../services/memberService', () => ({
   createMember: jest.fn(),
   updateMember: jest.fn(),
   getMembers: jest.fn(),
+  getMembersDirectory: jest.fn(),
   deleteMember: jest.fn(),
 }));
 
@@ -28,6 +29,13 @@ jest.mock('../../services/whatsappService', () => {
     getMessagesByPeer: jest.fn(),
   };
 });
+
+jest.mock('../../services/purchaseTeamChatService', () => ({
+  listThreadsByInquiry: jest.fn(),
+  getOrCreateThread: jest.fn(),
+  getMessages: jest.fn(),
+  sendMessage: jest.fn(),
+}));
 
 jest.mock('../../services/amendmentService', () => ({
   finalizeAmendment: jest.fn(),
@@ -47,6 +55,7 @@ const inquiryService = require('../../services/inquiryService');
 const memberService = require('../../services/memberService');
 const whatsappService = require('../../services/whatsappService');
 const amendmentService = require('../../services/amendmentService');
+const purchaseTeamChatService = require('../../services/purchaseTeamChatService');
 const AppError = require('../../utils/AppError');
 const { messages } = require('../../locales');
 const app = require('../../app');
@@ -58,6 +67,7 @@ beforeEach(() => {
   memberService.createMember.mockReset();
   memberService.updateMember.mockReset();
   memberService.getMembers.mockReset();
+  memberService.getMembersDirectory.mockReset();
   memberService.deleteMember.mockReset();
   whatsappService.sendMessage.mockReset();
   whatsappService.sendTextMessage.mockReset();
@@ -68,6 +78,10 @@ beforeEach(() => {
   amendmentService.getAmendment.mockReset();
   amendmentService.getAmendmentMessages.mockReset();
   amendmentService.addSessionNote.mockReset();
+  purchaseTeamChatService.listThreadsByInquiry.mockReset();
+  purchaseTeamChatService.getOrCreateThread.mockReset();
+  purchaseTeamChatService.getMessages.mockReset();
+  purchaseTeamChatService.sendMessage.mockReset();
 });
 
 describe('Health', () => {
@@ -281,6 +295,7 @@ describe('Inquiries', () => {
 describe('Members', () => {
   let adminToken;
   let userToken;
+  let salesToken;
 
   const memberDocId = '507f1f77bcf86cd799439011';
 
@@ -312,6 +327,11 @@ describe('Members', () => {
       .post('/api/v1/auth/login')
       .send({ userId: 'member-plain-user', email: 'member-plain@test.com', role: 'user' });
     userToken = userLogin.body.data.accessToken;
+
+    const salesLogin = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ userId: 'member-sales', email: 'member-sales@test.com', role: 'sales' });
+    salesToken = salesLogin.body.data.accessToken;
   });
 
   it('POST /api/v1/members returns 401 without token', async () => {
@@ -592,6 +612,50 @@ describe('Members', () => {
     expect(res.status).toBe(403);
   });
 
+  it('GET /api/v1/members/directory returns 200 for sales with Purchase team', async () => {
+    memberService.getMembersDirectory.mockResolvedValue({
+      items: [
+        {
+          _id: 'm2',
+          fullName: 'Priya Shah',
+          departmentRoles: [{ department: 'Purchase', role: 'Executive' }],
+          officePhoneNumber: { countryCode: '91', number: '9876500000' },
+        },
+      ],
+      department: 'Purchase',
+      role: null,
+      page: 1,
+      limit: 50,
+      totalItems: 1,
+      totalPages: 1,
+    });
+
+    const res = await request(app)
+      .get('/api/v1/members/directory?department=Purchase')
+      .set('Authorization', `Bearer ${salesToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.items).toHaveLength(1);
+    expect(res.body.data.items[0].departmentRoles[0].department).toBe('Purchase');
+    expect(memberService.getMembersDirectory).toHaveBeenCalledWith(
+      expect.objectContaining({ department: 'Purchase', employmentStatus: 'active' })
+    );
+  });
+
+  it('GET /api/v1/members/directory returns 403 for user role', async () => {
+    const res = await request(app)
+      .get('/api/v1/members/directory?department=Purchase')
+      .set('Authorization', `Bearer ${userToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /api/v1/members/directory returns 422 without department', async () => {
+    const res = await request(app)
+      .get('/api/v1/members/directory')
+      .set('Authorization', `Bearer ${salesToken}`);
+    expect(res.status).toBe(422);
+  });
+
   it('GET /api/v1/members returns 200 with paginated data (admin)', async () => {
     memberService.getMembers.mockResolvedValue({
       items: [{ _id: 'm1', fullName: 'Ravi Kumar' }],
@@ -852,6 +916,72 @@ describe('WhatsApp conversations', () => {
       '919876543210',
       expect.objectContaining({ page: 1, limit: 50 })
     );
+  });
+});
+
+describe('Purchase Team Chat', () => {
+  let salesToken;
+  const inquiryId = '507f1f77bcf86cd799439011';
+  const purchaseMemberId = '507f1f77bcf86cd799439012';
+
+  beforeAll(async () => {
+    const loginRes = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ userId: 'sales-pc', email: 'sales-pc@test.com', role: 'sales' });
+    salesToken = loginRes.body.data.accessToken;
+  });
+
+  it('POST open thread returns 201 for sales', async () => {
+    purchaseTeamChatService.getOrCreateThread.mockResolvedValue({
+      inquiryId,
+      purchaseTeamMemberId: purchaseMemberId,
+    });
+    const res = await request(app)
+      .post(`/api/v1/inquiries/${inquiryId}/purchase-chats`)
+      .set('Authorization', `Bearer ${salesToken}`)
+      .send({ purchaseTeamMemberId: purchaseMemberId });
+    expect(res.status).toBe(201);
+    expect(res.body.data.thread.purchaseTeamMemberId).toBe(purchaseMemberId);
+  });
+
+  it('GET messages returns 200 for sales', async () => {
+    purchaseTeamChatService.getMessages.mockResolvedValue({
+      inquiryId,
+      purchaseTeamMemberId: purchaseMemberId,
+      items: [{ text: 'Hi', senderRole: 'sales' }],
+      page: 1,
+      limit: 50,
+      totalItems: 1,
+      totalPages: 1,
+    });
+    const res = await request(app)
+      .get(`/api/v1/inquiries/${inquiryId}/purchase-chats/${purchaseMemberId}/messages`)
+      .set('Authorization', `Bearer ${salesToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.items).toHaveLength(1);
+  });
+
+  it('POST message returns 201 for sales', async () => {
+    purchaseTeamChatService.sendMessage.mockResolvedValue({
+      text: 'Need help',
+      senderRole: 'sales',
+    });
+    const res = await request(app)
+      .post(`/api/v1/inquiries/${inquiryId}/purchase-chats/${purchaseMemberId}/messages`)
+      .set('Authorization', `Bearer ${salesToken}`)
+      .send({ text: 'Need help' });
+    expect(res.status).toBe(201);
+    expect(res.body.data.message.text).toBe('Need help');
+  });
+
+  it('GET threads returns 403 for user role', async () => {
+    const loginRes = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ userId: 'u-pc', email: 'u-pc@test.com', role: 'user' });
+    const res = await request(app)
+      .get(`/api/v1/inquiries/${inquiryId}/purchase-chats`)
+      .set('Authorization', `Bearer ${loginRes.body.data.accessToken}`);
+    expect(res.status).toBe(403);
   });
 });
 

@@ -76,6 +76,9 @@ module.exports = {
       invalidPageLimit: 'Page and limit must be at least 1',
       limitMax: 'Limit must not exceed 100',
     },
+    memberDirectory: {
+      departmentRequired: 'Department is required (e.g. Purchase)',
+    },
     amendment: {
       actionRequired: 'Action is required',
       actionInvalid: 'Action must be put_follow_up, mark_pending, mark_loss, or mark_won',
@@ -94,6 +97,14 @@ module.exports = {
     amendmentQuery: {
       invalidPageLimit: 'Page and limit must be at least 1',
       limitMax: 'Limit must not exceed 100',
+    },
+    purchaseChat: {
+      purchaseTeamMemberIdRequired: 'purchaseTeamMemberId is required',
+      purchaseTeamMemberIdInvalid: 'purchaseTeamMemberId must be a valid MongoDB ObjectId',
+      textRequired: 'Message text is required',
+      mediaUrlRequired: 'mediaUrl is required for document or image messages',
+      mediaUrlInvalid:
+        'mediaUrl must be a path from POST .../purchase-chats/{purchaseTeamMemberId}/uploads',
     },
   },
 
@@ -116,6 +127,8 @@ module.exports = {
     employeeIdExists: 'Employee ID already exists',
     personalEmailExists: 'Personal email is already in use',
     memberNotFound: 'Member not found',
+    purchaseTeamMemberNotFound: 'Purchase team member not found',
+    purchaseChatThreadNotFound: 'Purchase team chat thread not found',
     inquiryNotFound: 'Inquiry not found',
     amendmentNotFound: 'Amendment not found',
     amendmentSessionNotFound: 'Active amendment session not found or already finalized',

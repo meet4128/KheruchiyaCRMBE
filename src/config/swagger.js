@@ -296,6 +296,66 @@ const options = {
             role: { type: 'string', example: 'Associate' },
           },
         },
+        PurchaseChatOpenRequest: {
+          type: 'object',
+          required: ['purchaseTeamMemberId'],
+          properties: {
+            purchaseTeamMemberId: {
+              type: 'string',
+              example: '507f1f77bcf86cd799439012',
+              description: 'Member._id from GET /members/directory?department=Purchase',
+            },
+          },
+        },
+        PurchaseTeamChatMessage: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            inquiryId: { type: 'string' },
+            purchaseTeamMemberId: { type: 'string' },
+            senderUserId: { type: 'string' },
+            senderRole: { type: 'string', enum: ['sales', 'purchase', 'admin'] },
+            type: { type: 'string', enum: ['text', 'document', 'image'] },
+            text: { type: 'string' },
+            mediaUrl: { type: 'string', nullable: true },
+            fileName: { type: 'string', nullable: true },
+            mimeType: { type: 'string', nullable: true },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        PurchaseChatMessageRequest: {
+          type: 'object',
+          properties: {
+            type: { type: 'string', enum: ['text', 'document', 'image'], default: 'text' },
+            text: { type: 'string', description: 'Message body or caption' },
+            mediaUrl: {
+              type: 'string',
+              description: 'From POST .../uploads (required for document/image)',
+            },
+            fileName: { type: 'string' },
+            mimeType: { type: 'string' },
+          },
+        },
+        MemberDirectoryItem: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            fullName: { type: 'string', example: 'Priya Shah' },
+            firstName: { type: 'string' },
+            lastName: { type: 'string' },
+            employeeId: { type: 'string' },
+            designation: { type: 'string', example: 'Purchase Executive' },
+            employmentStatus: { type: 'string', example: 'active' },
+            departmentRoles: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/DepartmentRoleItem' },
+            },
+            officePhoneNumber: { $ref: '#/components/schemas/ContactNumber' },
+            phoneNumber: { $ref: '#/components/schemas/ContactNumber' },
+            personalEmail: { type: 'string', format: 'email' },
+            city: { type: 'string' },
+          },
+        },
         MemberCreate: {
           type: 'object',
           required: [
@@ -814,6 +874,148 @@ const spec = {
         },
       },
     },
+    '/api/v1/inquiries/{inquiryId}/purchase-chats': {
+      get: {
+        tags: ['Purchase Team Chat'],
+        summary: 'List purchase team chat threads for inquiry',
+        description:
+          '**Sales/admin:** all threads for inquiry. **Purchase:** only threads where JWT user matches member (`employeeId` or `personalEmail`).',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'inquiryId', in: 'path', required: true, schema: { type: 'string' } },
+          {
+            name: 'purchaseTeamMemberId',
+            in: 'query',
+            required: false,
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          200: { description: 'Thread list' },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden' },
+          404: { description: 'Inquiry not found' },
+        },
+      },
+      post: {
+        tags: ['Purchase Team Chat'],
+        summary: 'Open purchase team chat thread',
+        description:
+          '**Sales/admin only.** Creates thread for inquiry + `purchaseTeamMemberId` (from member directory).',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'inquiryId', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/PurchaseChatOpenRequest' },
+            },
+          },
+        },
+        responses: {
+          201: { description: 'Thread opened' },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden' },
+          404: { description: 'Inquiry or member not found' },
+          422: { description: 'Validation failed' },
+        },
+      },
+    },
+    '/api/v1/inquiries/{inquiryId}/purchase-chats/{purchaseTeamMemberId}/uploads': {
+      post: {
+        tags: ['Purchase Team Chat'],
+        summary: 'Upload file for purchase team chat',
+        description:
+          'Multipart field `file`. PDF, JPEG, JPG, PNG; max 5MB. Returns `mediaUrl` for **POST .../messages** with type document/image.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'inquiryId', in: 'path', required: true, schema: { type: 'string' } },
+          {
+            name: 'purchaseTeamMemberId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['file'],
+                properties: {
+                  file: { type: 'string', format: 'binary' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: { description: 'File uploaded; use mediaUrl in send message' },
+          400: { description: 'No file' },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden' },
+        },
+      },
+    },
+    '/api/v1/inquiries/{inquiryId}/purchase-chats/{purchaseTeamMemberId}/messages': {
+      get: {
+        tags: ['Purchase Team Chat'],
+        summary: 'Get messages with purchase team member',
+        description:
+          'Internal CRM chat. Text and file messages include `mediaUrl` for download at `{BASE_URL}{mediaUrl}`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'inquiryId', in: 'path', required: true, schema: { type: 'string' } },
+          {
+            name: 'purchaseTeamMemberId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 100 } },
+        ],
+        responses: {
+          200: { description: 'Paginated messages' },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden' },
+          404: { description: 'Not found' },
+        },
+      },
+      post: {
+        tags: ['Purchase Team Chat'],
+        summary: 'Send message to purchase team member (text / document / image)',
+        description:
+          '**Sales/admin/purchase.** For files: upload first, then send with `type` document|image and `mediaUrl`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'inquiryId', in: 'path', required: true, schema: { type: 'string' } },
+          {
+            name: 'purchaseTeamMemberId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/PurchaseChatMessageRequest' },
+            },
+          },
+        },
+        responses: {
+          201: { description: 'Message sent' },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden' },
+          404: { description: 'Not found' },
+          422: { description: 'Validation failed' },
+        },
+      },
+    },
     '/api/v1/inquiries/{inquiryId}/amendments/finalize': {
       post: {
         tags: ['Amendments'],
@@ -1183,6 +1385,76 @@ const spec = {
           400: { description: 'No files or invalid upload' },
           401: { description: 'Authentication required' },
           403: { description: 'Forbidden (not admin)' },
+        },
+      },
+    },
+    '/api/v1/members/directory': {
+      get: {
+        tags: ['Members'],
+        summary: 'Member directory by department (Talk to Purchase Team)',
+        description:
+          'Read-only contact list for **sales** and **admin**. Use `department=Purchase` from the sales module (Talk to Purchase Team). Excludes document URLs and home address. Defaults to `employmentStatus=active`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'department',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', example: 'Purchase' },
+            description: 'Department name on member `departmentRoles` (case-insensitive)',
+          },
+          {
+            name: 'role',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', example: 'Executive' },
+            description: 'Optional role within that department',
+          },
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 100 } },
+          {
+            name: 'employmentStatus',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: ['active', 'inactive', 'probation', 'contract', 'terminated'],
+              default: 'active',
+            },
+          },
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 100 } },
+        ],
+        responses: {
+          200: {
+            description: 'Directory list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        department: { type: 'string', example: 'Purchase' },
+                        role: { type: 'string', nullable: true },
+                        items: {
+                          type: 'array',
+                          items: { $ref: '#/components/schemas/MemberDirectoryItem' },
+                        },
+                        page: { type: 'integer' },
+                        limit: { type: 'integer' },
+                        totalItems: { type: 'integer' },
+                        totalPages: { type: 'integer' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden (requires sales or admin)' },
+          422: { description: 'Validation failed' },
         },
       },
     },

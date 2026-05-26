@@ -40,6 +40,15 @@ const getMembers = asyncHandler(async (req, res) => {
   });
 });
 
+const getMembersDirectory = asyncHandler(async (req, res) => {
+  const result = await memberService.getMembersDirectory(req.query);
+
+  res.status(200).json({
+    status: 'success',
+    data: result,
+  });
+});
+
 const deleteMember = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const member = await memberService.deleteMember(id);
@@ -86,4 +95,11 @@ const uploadMemberDocuments = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { createMember, updateMember, deleteMember, getMembers, uploadMemberDocuments };
+module.exports = {
+  createMember,
+  updateMember,
+  deleteMember,
+  getMembers,
+  getMembersDirectory,
+  uploadMemberDocuments,
+};

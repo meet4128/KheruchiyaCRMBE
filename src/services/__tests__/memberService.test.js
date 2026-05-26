@@ -190,6 +190,61 @@ describe('memberService', () => {
     });
   });
 
+  describe('getMembersDirectory', () => {
+    it('filters by department and defaults to active employment', async () => {
+      const chain = {
+        select: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        sort: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue([{ fullName: 'Priya', departmentRoles: [] }]),
+      };
+      Member.find.mockReturnValue(chain);
+      Member.countDocuments.mockResolvedValue(1);
+
+      const result = await memberService.getMembersDirectory({ department: 'Purchase' });
+
+      expect(Member.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          employmentStatus: 'active',
+          departmentRoles: {
+            $elemMatch: { department: /^Purchase$/i },
+          },
+        })
+      );
+      expect(chain.select).toHaveBeenCalled();
+      expect(result.department).toBe('Purchase');
+      expect(result.items).toHaveLength(1);
+    });
+
+    it('filters by department and role when role is provided', async () => {
+      const chain = {
+        select: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        sort: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue([]),
+      };
+      Member.find.mockReturnValue(chain);
+      Member.countDocuments.mockResolvedValue(0);
+
+      await memberService.getMembersDirectory({ department: 'Purchase', role: 'Manager' });
+
+      expect(Member.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          departmentRoles: {
+            $elemMatch: {
+              department: /^Purchase$/i,
+              role: /^Manager$/i,
+            },
+          },
+        })
+      );
+    });
+  });
+
   describe('deleteMember', () => {
     const id = '507f1f77bcf86cd799439011';
 
