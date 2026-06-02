@@ -1,5 +1,6 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const { getEmailConfigStatus } = require('../config/validateEnv');
 
 const router = express.Router();
 
@@ -36,11 +37,14 @@ router.get('/ready', (_req, res) => {
     });
   }
 
+  const email = getEmailConfigStatus();
+
   res.status(200).json({
     status: 'success',
     data: {
       ready: true,
       database: 'connected',
+      email,
     },
   });
 });

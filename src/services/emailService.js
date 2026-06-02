@@ -14,7 +14,12 @@ function isProduction() {
 }
 
 function getFrom() {
-  return process.env.EMAIL_FROM || DEFAULT_FROM;
+  const raw = process.env.EMAIL_FROM || DEFAULT_FROM;
+  // Strip surrounding quotes if hosting panel or .env added them literally
+  const trimmed = String(raw)
+    .trim()
+    .replace(/^["']|["']$/g, '');
+  return trimmed || DEFAULT_FROM;
 }
 
 function getAppBaseUrl() {

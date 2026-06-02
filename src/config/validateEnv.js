@@ -1,0 +1,55 @@
+/**
+ * Production email/auth env checks — logs clear warnings at startup (no secrets).
+ */
+
+function isProduction() {
+  return process.env.NODE_ENV === 'production';
+}
+
+function getEmailConfigStatus() {
+  const missing = [];
+  if (!process.env.RESEND_API_KEY || !String(process.env.RESEND_API_KEY).trim()) {
+    missing.push('RESEND_API_KEY');
+  }
+  if (!process.env.APP_BASE_URL || !String(process.env.APP_BASE_URL).trim()) {
+    missing.push('APP_BASE_URL');
+  }
+  if (!process.env.EMAIL_FROM || !String(process.env.EMAIL_FROM).trim()) {
+    missing.push('EMAIL_FROM');
+  }
+
+  return {
+    configured: missing.length === 0,
+    missing,
+    appBaseUrl: process.env.APP_BASE_URL
+      ? String(process.env.APP_BASE_URL).replace(/\/+$/, '')
+      : null,
+    emailFromSet: Boolean(process.env.EMAIL_FROM && String(process.env.EMAIL_FROM).trim()),
+    resendKeySet: Boolean(process.env.RESEND_API_KEY && String(process.env.RESEND_API_KEY).trim()),
+  };
+}
+
+function logProductionEnvWarnings() {
+  if (!isProduction()) return;
+
+  const email = getEmailConfigStatus();
+  if (!email.configured) {
+    console.error(
+      '[config] PRODUCTION email is NOT configured. Invite/resend will return HTTP 500 until these are set and the server is restarted:',
+      email.missing.join(', ')
+    );
+  } else {
+    console.log('[config] Production email config OK (RESEND_API_KEY, APP_BASE_URL, EMAIL_FROM).');
+    console.log('[config] Invite links will use:', email.appBaseUrl);
+  }
+
+  if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET) {
+    console.error('[config] JWT_SECRET and JWT_REFRESH_SECRET are required in production.');
+  }
+}
+
+module.exports = {
+  isProduction,
+  getEmailConfigStatus,
+  logProductionEnvWarnings,
+};
