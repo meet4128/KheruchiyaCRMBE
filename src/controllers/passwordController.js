@@ -6,6 +6,7 @@ const passwordService = require('../services/passwordService');
 const emailService = require('../services/emailService');
 const { messages } = require('../locales');
 const { log } = require('../utils/logger');
+const { resolveAppBaseUrlFromRequest } = require('../utils/requestBaseUrl');
 const { AUTH_TOKEN_PURPOSE } = require('../constants/authTokenPurpose');
 const { MEMBER_INVITATION_STATUS } = require('../constants/memberInvitationStatus');
 
@@ -117,7 +118,7 @@ const forgotPassword = asyncHandler(async (req, res) => {
     purpose: AUTH_TOKEN_PURPOSE.RESET,
   });
 
-  const link = emailService.buildResetLink(rawToken);
+  const link = emailService.buildResetLink(rawToken, resolveAppBaseUrlFromRequest(req));
   try {
     await emailService.sendResetEmail({
       to: member.personalEmail,

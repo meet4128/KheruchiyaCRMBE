@@ -23,7 +23,11 @@ function getFrom() {
   return trimmed || DEFAULT_FROM;
 }
 
-function getAppBaseUrl() {
+function getAppBaseUrl(overrideBaseUrl) {
+  if (overrideBaseUrl && String(overrideBaseUrl).trim()) {
+    return String(overrideBaseUrl).trim().replace(/\/+$/, '');
+  }
+
   const resolved = resolveAppBaseUrl();
   if (resolved) return resolved;
 
@@ -35,12 +39,12 @@ function getAppBaseUrl() {
   return `http://localhost:${port}`;
 }
 
-function buildInviteLink(rawToken) {
-  return `${getAppBaseUrl()}${INVITE_PATH}?token=${encodeURIComponent(rawToken)}`;
+function buildInviteLink(rawToken, appBaseUrl) {
+  return `${getAppBaseUrl(appBaseUrl)}${INVITE_PATH}?token=${encodeURIComponent(rawToken)}`;
 }
 
-function buildResetLink(rawToken) {
-  return `${getAppBaseUrl()}${RESET_PATH}?token=${encodeURIComponent(rawToken)}`;
+function buildResetLink(rawToken, appBaseUrl) {
+  return `${getAppBaseUrl(appBaseUrl)}${RESET_PATH}?token=${encodeURIComponent(rawToken)}`;
 }
 
 function getResend() {

@@ -50,8 +50,9 @@ function logProductionEnvWarnings() {
   const email = getEmailConfigStatus();
   if (!email.configured) {
     console.error(
-      '[config] PRODUCTION email is NOT configured. Invite/resend will return HTTP 500 until these are set and the server is restarted:',
-      email.missing.join(', ')
+      '[config] PRODUCTION email env incomplete (missing:',
+      email.missing.join(', '),
+      '). Invite/resend can still use the request Host header if APP_BASE_URL is missing — set APP_BASE_URL on the server for reliability.'
     );
   } else {
     console.log('[config] Production email config OK (RESEND_API_KEY, APP_BASE_URL, EMAIL_FROM).');

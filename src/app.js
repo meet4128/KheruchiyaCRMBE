@@ -18,6 +18,11 @@ const { messages } = require('./locales');
 
 const app = express();
 
+// Behind BigRock / nginx reverse proxy — needed for correct https + Host in email link fallback
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 // Security middleware (CSP disabled so Swagger UI can load - it uses inline scripts)
 app.use(
   helmet({

@@ -1,12 +1,14 @@
 const memberService = require('../services/memberService');
 const asyncHandler = require('../utils/asyncHandler');
 const { messages } = require('../locales');
+const { resolveAppBaseUrlFromRequest } = require('../utils/requestBaseUrl');
 
 const createMember = asyncHandler(async (req, res) => {
   const userId = req.user?.id;
   const payload = {
     ...req.body,
     createdBy: userId,
+    appBaseUrl: resolveAppBaseUrlFromRequest(req),
   };
 
   const { member, invite } = await memberService.createMember(payload);
@@ -22,7 +24,9 @@ const createMember = asyncHandler(async (req, res) => {
 
 const updateMember = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const member = await memberService.updateMember(id, req.body);
+  const member = await memberService.updateMember(id, req.body, {
+    appBaseUrl: resolveAppBaseUrlFromRequest(req),
+  });
 
   res.status(200).json({
     status: 'success',
@@ -36,6 +40,7 @@ const resendInvitation = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { member, invite } = await memberService.resendInvitation(id, {
     createdBy: req.user?.id,
+    appBaseUrl: resolveAppBaseUrlFromRequest(req),
   });
 
   res.status(200).json({

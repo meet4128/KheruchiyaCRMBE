@@ -27,7 +27,7 @@ function buildInviteResponse({ rawToken, expiresAt, to, sent = true, devFallback
  * sends the invite email, and stamps lastInviteSentAt.
  * Returns the invite descriptor (sent / sentTo / expiresAt) and the updated member doc.
  */
-async function sendInviteToMember(member, { createdBy } = {}) {
+async function sendInviteToMember(member, { createdBy, appBaseUrl } = {}) {
   await authTokenService.invalidateOtherTokens({
     userId: member._id,
     purpose: AUTH_TOKEN_PURPOSE.INVITE,
@@ -40,7 +40,7 @@ async function sendInviteToMember(member, { createdBy } = {}) {
   });
 
   const to = member.inviteEmail || member.personalEmail;
-  const link = emailService.buildInviteLink(rawToken);
+  const link = emailService.buildInviteLink(rawToken, appBaseUrl);
 
   let emailResult;
   try {
@@ -98,11 +98,15 @@ const createMember = async (payload) => {
 
   // Attach inviteEmail transiently for downstream sendInviteToMember (not persisted)
   member.inviteEmail = inviteEmail || personalEmail;
-  const { invite } = await sendInviteToMember(member, { createdBy: payload.createdBy });
+  const { invite } = await sendInviteToMember(member, {
+    createdBy: payload.createdBy,
+    appBaseUrl: payload.appBaseUrl,
+  });
   return { member, invite };
 };
 
-const updateMember = async (id, updates) => {
+const updateMember = async (id, updates, options = {}) => {
+  const { appBaseUrl } = options;
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw new AppError(messages.errors.invalidIdOrFormat, 400);
   }
@@ -169,7 +173,7 @@ const updateMember = async (id, updates) => {
     });
     member.inviteEmail = updates.personalEmail;
     try {
-      await sendInviteToMember(member);
+      await sendInviteToMember(member, { appBaseUrl });
       member = await Member.findById(id);
     } catch (err) {
       log.error('invite.autoresend.failed', err?.message || err);
@@ -188,7 +192,7 @@ const updateMember = async (id, updates) => {
   return member;
 };
 
-const resendInvitation = async (id, { createdBy } = {}) => {
+const resendInvitation = async (id, { createdBy, appBaseUrl } = {}) => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw new AppError(messages.errors.invalidIdOrFormat, 400);
   }
@@ -199,7 +203,7 @@ const resendInvitation = async (id, { createdBy } = {}) => {
   if (member.invitationStatus !== MEMBER_INVITATION_STATUS.PENDING) {
     throw new AppError(messages.auth.inviteAlreadyActive, 409);
   }
-  const { invite } = await sendInviteToMember(member, { createdBy });
+  const { invite } = await sendInviteToMember(member, { createdBy, appBaseUrl });
   log.info(`invite.resent member=${member._id} by=${createdBy || 'unknown'}`);
   return { member, invite };
 };
