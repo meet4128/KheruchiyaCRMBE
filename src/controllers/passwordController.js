@@ -27,21 +27,60 @@ function maskEmail(email) {
 const validateTokenQuery = asyncHandler(async (req, res) => {
   const { token: rawToken, purpose } = req.query;
 
-  const token = await authTokenService.verifyToken({ rawToken, purpose });
-  const member = await Member.findById(token.userId).select('personalEmail invitationStatus');
-  if (!member) {
-    throw new AppError(messages.errors.authTokenInvalid, 400);
-  }
+  try {
+    const token = await authTokenService.verifyToken({ rawToken, purpose });
+    const member = await Member.findById(token.userId).select('personalEmail invitationStatus');
+    if (!member) {
+      throw new AppError(messages.errors.authTokenInvalid, 400);
+    }
 
-  res.status(200).json({
-    status: 'success',
-    data: {
-      valid: true,
-      purpose,
-      email: maskEmail(member.personalEmail),
-      expiresAt: token.expiresAt,
-    },
-  });
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        valid: true,
+        purpose,
+        email: maskEmail(member.personalEmail),
+        expiresAt: token.expiresAt,
+      },
+    });
+  } catch (err) {
+    if (
+      err instanceof AppError &&
+      err.statusCode === 410 &&
+      err.message === messages.errors.authTokenAlreadyUsed &&
+      purpose === AUTH_TOKEN_PURPOSE.INVITE
+    ) {
+      const usedToken = await authTokenService.findTokenByRaw({ rawToken, purpose });
+      if (usedToken?.usedAt) {
+        const member = await Member.findById(usedToken.userId).select(
+          'personalEmail invitationStatus'
+        );
+        if (member?.invitationStatus === MEMBER_INVITATION_STATUS.ACTIVE) {
+          return res.status(200).json({
+            status: 'success',
+            data: {
+              valid: false,
+              alreadyActive: true,
+              message: messages.auth.accountAlreadyActivePleaseLogin,
+              email: maskEmail(member.personalEmail),
+            },
+          });
+        }
+        if (member?.invitationStatus === MEMBER_INVITATION_STATUS.PENDING) {
+          return res.status(200).json({
+            status: 'success',
+            data: {
+              valid: false,
+              inviteSuperseded: true,
+              message: messages.auth.inviteLinkSuperseded,
+              email: maskEmail(member.personalEmail),
+            },
+          });
+        }
+      }
+    }
+    throw err;
+  }
 });
 
 /**

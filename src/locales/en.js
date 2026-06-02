@@ -140,6 +140,10 @@ module.exports = {
     inviteSent: 'Invitation email sent',
     inviteResent: 'Invitation email re-sent',
     inviteAlreadyActive: 'Member account is already active; cannot resend invite',
+    accountAlreadyActivePleaseLogin:
+      'Your password is already set. Go to the login page and sign in with your email and password.',
+    inviteLinkSuperseded:
+      'This invite link is no longer valid (a newer invite was sent, or this link was already used). Ask your admin to resend the invite and open only the latest email.',
   },
 
   // ─── Error messages (global, service, model) ─────────────────────────────

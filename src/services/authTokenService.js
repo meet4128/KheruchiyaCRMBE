@@ -77,6 +77,15 @@ async function verifyToken({ rawToken, purpose } = {}) {
   return token;
 }
 
+/** Lookup by raw token without rejecting used/expired (for clearer error messages). */
+async function findTokenByRaw({ rawToken, purpose } = {}) {
+  if (typeof rawToken !== 'string' || !RAW_TOKEN_PATTERN.test(rawToken)) {
+    return null;
+  }
+  assertValidPurpose(purpose);
+  return AuthToken.findOne({ tokenHash: hashRawToken(rawToken), purpose });
+}
+
 /**
  * Marks a token as consumed (single-use). Idempotent if already used.
  */
@@ -110,6 +119,7 @@ async function invalidateOtherTokens({ userId, purpose, exceptId } = {}) {
 module.exports = {
   issueToken,
   verifyToken,
+  findTokenByRaw,
   consumeToken,
   invalidateOtherTokens,
   hashRawToken,
