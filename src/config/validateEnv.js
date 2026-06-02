@@ -6,12 +6,24 @@ function isProduction() {
   return process.env.NODE_ENV === 'production';
 }
 
+/** APP_BASE_URL first; PUBLIC_BASE_URL is accepted as fallback (same host on many deployments). */
+function resolveAppBaseUrl() {
+  const candidates = [process.env.APP_BASE_URL, process.env.PUBLIC_BASE_URL];
+  for (const value of candidates) {
+    if (value && String(value).trim()) {
+      return String(value).trim().replace(/\/+$/, '');
+    }
+  }
+  return null;
+}
+
 function getEmailConfigStatus() {
   const missing = [];
   if (!process.env.RESEND_API_KEY || !String(process.env.RESEND_API_KEY).trim()) {
     missing.push('RESEND_API_KEY');
   }
-  if (!process.env.APP_BASE_URL || !String(process.env.APP_BASE_URL).trim()) {
+  const appBaseUrl = resolveAppBaseUrl();
+  if (!appBaseUrl) {
     missing.push('APP_BASE_URL');
   }
   if (!process.env.EMAIL_FROM || !String(process.env.EMAIL_FROM).trim()) {
@@ -21,8 +33,11 @@ function getEmailConfigStatus() {
   return {
     configured: missing.length === 0,
     missing,
-    appBaseUrl: process.env.APP_BASE_URL
-      ? String(process.env.APP_BASE_URL).replace(/\/+$/, '')
+    appBaseUrl,
+    appBaseUrlSource: appBaseUrl
+      ? process.env.APP_BASE_URL?.trim()
+        ? 'APP_BASE_URL'
+        : 'PUBLIC_BASE_URL'
       : null,
     emailFromSet: Boolean(process.env.EMAIL_FROM && String(process.env.EMAIL_FROM).trim()),
     resendKeySet: Boolean(process.env.RESEND_API_KEY && String(process.env.RESEND_API_KEY).trim()),
@@ -50,6 +65,7 @@ function logProductionEnvWarnings() {
 
 module.exports = {
   isProduction,
+  resolveAppBaseUrl,
   getEmailConfigStatus,
   logProductionEnvWarnings,
 };

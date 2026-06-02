@@ -35,11 +35,20 @@ describe('emailService', () => {
       expect(emailService.buildInviteLink('t')).toMatch(/^http:\/\/localhost:5001\/set-password/);
     });
 
-    it('throws in production when APP_BASE_URL missing', () => {
+    it('throws in production when APP_BASE_URL and PUBLIC_BASE_URL missing', () => {
       delete process.env.APP_BASE_URL;
+      delete process.env.PUBLIC_BASE_URL;
       process.env.NODE_ENV = 'production';
       expect(() => emailService.buildInviteLink('t')).toThrow();
       process.env.NODE_ENV = 'test';
+    });
+
+    it('uses PUBLIC_BASE_URL when APP_BASE_URL unset', () => {
+      delete process.env.APP_BASE_URL;
+      process.env.PUBLIC_BASE_URL = 'https://kheruchiyagroup.com/';
+      expect(emailService.buildInviteLink('t')).toBe(
+        'https://kheruchiyagroup.com/set-password?token=t'
+      );
     });
   });
 

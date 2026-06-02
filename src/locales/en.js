@@ -192,7 +192,8 @@ module.exports = {
     jwtRefreshSecretRequired:
       'JWT_REFRESH_SECRET is required in production. Set it in your .env file.',
     resendApiKeyRequired: 'RESEND_API_KEY is required in production. Set it in your .env file.',
-    appBaseUrlRequired: 'APP_BASE_URL is required in production. Set it in your .env file.',
+    appBaseUrlRequired:
+      'APP_BASE_URL is required in production (or set PUBLIC_BASE_URL to the same https://kheruchiyagroup.com URL). Add it in your hosting environment variables and restart the server.',
   },
 
   // ─── Mongoose model validation ───────────────────────────────────────────

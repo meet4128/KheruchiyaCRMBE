@@ -1,6 +1,7 @@
 const { log } = require('../utils/logger');
 const AppError = require('../utils/AppError');
 const { messages } = require('../locales');
+const { resolveAppBaseUrl } = require('../config/validateEnv');
 
 const APP_NAME = 'Kheruchiya CRM';
 const INVITE_PATH = '/set-password';
@@ -23,16 +24,15 @@ function getFrom() {
 }
 
 function getAppBaseUrl() {
-  const base = process.env.APP_BASE_URL;
-  if (!base || base.trim() === '') {
-    if (isProduction()) {
-      throw new AppError(messages.config.appBaseUrlRequired, 500);
-    }
-    // Dev default: same host/port as this API so /set-password & /reset-password pages work
-    const port = process.env.PORT || 5001;
-    return `http://localhost:${port}`;
+  const resolved = resolveAppBaseUrl();
+  if (resolved) return resolved;
+
+  if (isProduction()) {
+    throw new AppError(messages.config.appBaseUrlRequired, 500);
   }
-  return base.replace(/\/+$/, '');
+  // Dev default: same host/port as this API so /set-password & /reset-password pages work
+  const port = process.env.PORT || 5001;
+  return `http://localhost:${port}`;
 }
 
 function buildInviteLink(rawToken) {
