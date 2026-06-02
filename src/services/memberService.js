@@ -217,6 +217,19 @@ const deleteMember = async (id) => {
   return member;
 };
 
+const getMemberById = async (id) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new AppError(messages.errors.invalidIdOrFormat, 400);
+  }
+
+  const member = await Member.findById(id).lean();
+  if (!member) {
+    throw new AppError(messages.errors.memberNotFound, 404);
+  }
+
+  return member;
+};
+
 const ALLOWED_SORT_FIELDS = [
   'createdAt',
   'updatedAt',
@@ -351,6 +364,7 @@ module.exports = {
   updateMember,
   resendInvitation,
   deleteMember,
+  getMemberById,
   getMembers,
   getMembersDirectory,
 };

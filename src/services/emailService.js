@@ -23,7 +23,9 @@ function getAppBaseUrl() {
     if (isProduction()) {
       throw new AppError(messages.config.appBaseUrlRequired, 500);
     }
-    return 'http://localhost:3000';
+    // Dev default: same host/port as this API so /set-password & /reset-password pages work
+    const port = process.env.PORT || 5001;
+    return `http://localhost:${port}`;
   }
   return base.replace(/\/+$/, '');
 }
@@ -134,9 +136,24 @@ async function deliver({ to, subject, html, text, kind }) {
       html,
       text,
     });
-    log.info(`[email:${kind}] sent to=${to} id=${result?.data?.id || result?.id || 'unknown'}`);
-    return { id: result?.data?.id || result?.id || null, devFallback: false };
+
+    // Resend SDK often returns { data: null, error: {...} } without throwing
+    if (result?.error) {
+      const msg = result.error.message || JSON.stringify(result.error);
+      log.error(`[email:${kind}] Resend rejected send`, msg);
+      throw new AppError(messages.errors.emailSendFailed, 502, [{ field: 'email', message: msg }]);
+    }
+
+    const messageId = result?.data?.id || result?.id;
+    if (!messageId) {
+      log.error(`[email:${kind}] Resend returned no message id`, JSON.stringify(result));
+      throw new AppError(messages.errors.emailSendFailed, 502);
+    }
+
+    log.info(`[email:${kind}] sent to=${to} id=${messageId}`);
+    return { id: messageId, devFallback: false };
   } catch (err) {
+    if (err instanceof AppError) throw err;
     log.error(`[email:${kind}] send failed`, err?.message || err);
     throw new AppError(messages.errors.emailSendFailed, 502);
   }

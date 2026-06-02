@@ -17,6 +17,7 @@ jest.mock('../../services/memberService', () => ({
   resendInvitation: jest.fn(),
   getMembers: jest.fn(),
   getMembersDirectory: jest.fn(),
+  getMemberById: jest.fn(),
   deleteMember: jest.fn(),
 }));
 
@@ -101,6 +102,7 @@ beforeEach(() => {
   memberService.resendInvitation.mockReset();
   memberService.getMembers.mockReset();
   memberService.getMembersDirectory.mockReset();
+  memberService.getMemberById.mockReset();
   memberService.deleteMember.mockReset();
   whatsappService.sendMessage.mockReset();
   whatsappService.sendTextMessage.mockReset();
@@ -1188,6 +1190,60 @@ describe('Members', () => {
       .set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(422);
+  });
+
+  it('GET /api/v1/members/:id returns 401 without token', async () => {
+    const res = await request(app).get(`/api/v1/members/${memberDocId}`);
+    expect(res.status).toBe(401);
+    expect(memberService.getMemberById).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/v1/members/:id returns 403 when not admin', async () => {
+    const res = await request(app)
+      .get(`/api/v1/members/${memberDocId}`)
+      .set('Authorization', `Bearer ${userToken}`);
+
+    expect(res.status).toBe(403);
+    expect(memberService.getMemberById).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/v1/members/:id returns 200 when admin', async () => {
+    const member = { _id: memberDocId, fullName: 'Ravi Kumar', employeeId: 'EMP001' };
+    memberService.getMemberById.mockResolvedValue(member);
+
+    const res = await request(app)
+      .get(`/api/v1/members/${memberDocId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('success');
+    expect(res.body.data.member).toEqual(member);
+    expect(memberService.getMemberById).toHaveBeenCalledWith(memberDocId);
+  });
+
+  it('GET /api/v1/members/:id returns 404 when service reports not found', async () => {
+    memberService.getMemberById.mockRejectedValue(
+      new AppError(messages.errors.memberNotFound, 404)
+    );
+
+    const res = await request(app)
+      .get(`/api/v1/members/${memberDocId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.status).toBe('fail');
+  });
+
+  it('GET /api/v1/members/:id returns 400 when id invalid', async () => {
+    memberService.getMemberById.mockRejectedValue(
+      new AppError(messages.errors.invalidIdOrFormat, 400)
+    );
+
+    const res = await request(app)
+      .get('/api/v1/members/not-an-object-id')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(400);
   });
 
   it('DELETE /api/v1/members/:id returns 403 when not admin', async () => {

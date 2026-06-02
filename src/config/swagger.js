@@ -1846,6 +1846,47 @@ const spec = {
       },
     },
     '/api/v1/members/{id}': {
+      get: {
+        tags: ['Members'],
+        summary: 'Get member by ID',
+        description:
+          'Returns the full member record for the given MongoDB ObjectId. **Requires `admin` JWT.** `passwordHash` is never included.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', example: '507f1f77bcf86cd799439011' },
+            description: 'MongoDB ObjectId of the member',
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Member found',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        member: { type: 'object', description: 'Full member document' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Invalid member id format' },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden (not admin)' },
+          404: { description: 'Member not found' },
+        },
+      },
       patch: {
         tags: ['Members'],
         summary: 'Update member',

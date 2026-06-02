@@ -48,6 +48,7 @@ router.get(
   validateMemberDirectoryQuery,
   memberController.getMembersDirectory
 );
+router.get('/:id', authMiddleware, requireRoles('admin'), memberController.getMember);
 router.get(
   '/',
   authMiddleware,

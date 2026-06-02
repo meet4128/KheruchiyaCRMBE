@@ -11,6 +11,7 @@ const healthRoutes = require('./routes/healthRoutes');
 const whatsappWebhookRoutes = require('./routes/whatsappWebhookRoutes');
 const whatsappRoutes = require('./routes/whatsappRoutes');
 const memberRoutes = require('./routes/memberRoutes');
+const passwordPublicRoutes = require('./routes/passwordPublicRoutes');
 const globalErrorHandler = require('./middlewares/globalErrorHandler');
 const AppError = require('./utils/AppError');
 const { messages } = require('./locales');
@@ -115,6 +116,9 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/inquiries', inquiryRoutes);
 app.use('/api/v1/members', memberRoutes);
 app.use('/api/v1/whatsapp', whatsappRoutes);
+
+// Public password pages (dev / until Flutter web hosts these routes)
+app.use(passwordPublicRoutes);
 
 // 404 handler
 app.all('*', (req, res, next) => {

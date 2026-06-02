@@ -13,9 +13,15 @@ const globalErrorHandler = (err, req, res, _next) => {
   error.status = err.status || 'error';
 
   if (err instanceof AppError) {
+    const detail =
+      Array.isArray(err.errors) && err.errors[0]?.message ? err.errors[0].message : err.message;
     return res.status(err.statusCode).json(
       err.statusCode >= 500
-        ? { status: 'error', message: err.message }
+        ? {
+            status: 'error',
+            message: detail,
+            ...(err.errors && { errors: err.errors }),
+          }
         : {
             status: 'fail',
             data: { message: err.message, ...(err.errors && { errors: err.errors }) },

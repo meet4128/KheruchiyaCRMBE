@@ -47,6 +47,18 @@ const resendInvitation = asyncHandler(async (req, res) => {
   });
 });
 
+const getMember = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const member = await memberService.getMemberById(id);
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      member,
+    },
+  });
+});
+
 const getMembers = asyncHandler(async (req, res) => {
   const result = await memberService.getMembers(req.query);
 
@@ -116,6 +128,7 @@ module.exports = {
   updateMember,
   resendInvitation,
   deleteMember,
+  getMember,
   getMembers,
   getMembersDirectory,
   uploadMemberDocuments,

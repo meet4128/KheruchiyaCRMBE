@@ -445,6 +445,40 @@ describe('memberService', () => {
     });
   });
 
+  describe('getMemberById', () => {
+    const id = '507f1f77bcf86cd799439011';
+
+    it('throws 400 when id is not a valid ObjectId', async () => {
+      await expect(memberService.getMemberById('bad-id')).rejects.toMatchObject({
+        statusCode: 400,
+      });
+      expect(Member.findById).not.toHaveBeenCalled();
+    });
+
+    it('throws 404 when member does not exist', async () => {
+      Member.findById.mockReturnValue({
+        lean: jest.fn().mockResolvedValue(null),
+      });
+
+      await expect(memberService.getMemberById(id)).rejects.toMatchObject({
+        statusCode: 404,
+        message: messages.errors.memberNotFound,
+      });
+    });
+
+    it('returns member when valid id exists', async () => {
+      const member = { _id: id, fullName: 'Ravi Kumar', employeeId: 'EMP001' };
+      Member.findById.mockReturnValue({
+        lean: jest.fn().mockResolvedValue(member),
+      });
+
+      const result = await memberService.getMemberById(id);
+
+      expect(result).toEqual(member);
+      expect(Member.findById).toHaveBeenCalledWith(id);
+    });
+  });
+
   describe('deleteMember', () => {
     const id = '507f1f77bcf86cd799439011';
 
