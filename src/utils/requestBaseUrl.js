@@ -15,9 +15,13 @@ function resolveAppBaseUrlFromRequest(req) {
     return null;
   }
 
-  const proto = (req.get('x-forwarded-proto') || (req.secure ? 'https' : req.protocol) || 'https')
+  let proto = (req.get('x-forwarded-proto') || (req.secure ? 'https' : req.protocol) || 'https')
     .split(',')[0]
     .trim();
+
+  if (process.env.NODE_ENV === 'production' && proto === 'http') {
+    proto = 'https';
+  }
 
   const base = `${proto}://${host}`.replace(/\/+$/, '');
 

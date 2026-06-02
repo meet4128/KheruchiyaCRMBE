@@ -6,8 +6,13 @@ const validateTokenValidateQuery = require('../middlewares/validateTokenValidate
 const validateSetPassword = require('../middlewares/validateSetPassword');
 const validateForgotPassword = require('../middlewares/validateForgotPassword');
 const validateResetPassword = require('../middlewares/validateResetPassword');
+const { servePasswordPage } = require('./passwordFormHandlers');
 
 const router = express.Router();
+
+// GET HTML forms for email links (under /api/v1 so reverse proxy reaches Node, not Flutter)
+router.get('/set-password-form', servePasswordPage('invite'));
+router.get('/reset-password-form', servePasswordPage('reset'));
 
 // Dev/basic login for issuing access + refresh tokens
 router.post('/login', authController.login);

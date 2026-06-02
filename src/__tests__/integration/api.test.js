@@ -280,6 +280,14 @@ describe('Password flow', () => {
     expect(res.body.data.message).toBe(messages.errors.authTokenExpired);
   });
 
+  it('GET /api/v1/auth/set-password-form returns HTML password page', async () => {
+    const res = await request(app).get('/api/v1/auth/set-password-form');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/html/);
+    expect(res.text).toContain('Set your password');
+    expect(res.text).toContain('data-purpose="invite"');
+  });
+
   // ─── POST /api/v1/auth/set-password ─────────────────────────────────────
   it('POST /set-password returns 422 for weak password', async () => {
     const res = await request(app)

@@ -30,4 +30,18 @@ describe('resolveAppBaseUrlFromRequest', () => {
 
     expect(resolveAppBaseUrlFromRequest(req)).toBe('https://kheruchiyagroup.com');
   });
+
+  it('forces https in production when proxy reports http', () => {
+    delete process.env.APP_BASE_URL;
+    delete process.env.PUBLIC_BASE_URL;
+    process.env.NODE_ENV = 'production';
+
+    const req = {
+      get: (name) => (name === 'host' ? 'kheruchiyagroup.com' : undefined),
+      secure: false,
+      protocol: 'http',
+    };
+
+    expect(resolveAppBaseUrlFromRequest(req)).toBe('https://kheruchiyagroup.com');
+  });
 });

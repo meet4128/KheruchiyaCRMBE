@@ -7,11 +7,19 @@ function isProduction() {
 }
 
 /** APP_BASE_URL first; PUBLIC_BASE_URL is accepted as fallback (same host on many deployments). */
+function normalizeEnvBaseUrl(url) {
+  let base = String(url).trim().replace(/\/+$/, '');
+  if (isProduction() && base.startsWith('http://') && !/localhost|127\.0\.0\.1/i.test(base)) {
+    base = `https://${base.slice('http://'.length)}`;
+  }
+  return base;
+}
+
 function resolveAppBaseUrl() {
   const candidates = [process.env.APP_BASE_URL, process.env.PUBLIC_BASE_URL];
   for (const value of candidates) {
     if (value && String(value).trim()) {
-      return String(value).trim().replace(/\/+$/, '');
+      return normalizeEnvBaseUrl(value);
     }
   }
   return null;

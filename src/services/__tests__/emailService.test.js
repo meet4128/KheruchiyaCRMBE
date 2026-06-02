@@ -25,14 +25,20 @@ describe('emailService', () => {
     it('builds invite/reset links from APP_BASE_URL and url-encodes token', () => {
       const inviteLink = emailService.buildInviteLink('abc/123');
       const resetLink = emailService.buildResetLink('abc 123');
-      expect(inviteLink).toBe('http://localhost:3000/set-password?token=abc%2F123');
-      expect(resetLink).toBe('http://localhost:3000/reset-password?token=abc%20123');
+      expect(inviteLink).toBe(
+        'http://localhost:3000/api/v1/auth/set-password-form?token=abc%2F123'
+      );
+      expect(resetLink).toBe(
+        'http://localhost:3000/api/v1/auth/reset-password-form?token=abc%20123'
+      );
     });
 
     it('falls back to localhost:PORT when APP_BASE_URL unset in dev', () => {
       delete process.env.APP_BASE_URL;
       process.env.PORT = '5001';
-      expect(emailService.buildInviteLink('t')).toMatch(/^http:\/\/localhost:5001\/set-password/);
+      expect(emailService.buildInviteLink('t')).toMatch(
+        /^http:\/\/localhost:5001\/api\/v1\/auth\/set-password-form/
+      );
     });
 
     it('throws in production when APP_BASE_URL and PUBLIC_BASE_URL missing', () => {
@@ -47,7 +53,7 @@ describe('emailService', () => {
       delete process.env.APP_BASE_URL;
       process.env.PUBLIC_BASE_URL = 'https://kheruchiyagroup.com/';
       expect(emailService.buildInviteLink('t')).toBe(
-        'https://kheruchiyagroup.com/set-password?token=t'
+        'https://kheruchiyagroup.com/api/v1/auth/set-password-form?token=t'
       );
     });
   });

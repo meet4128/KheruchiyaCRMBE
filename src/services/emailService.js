@@ -4,8 +4,9 @@ const { messages } = require('../locales');
 const { resolveAppBaseUrl } = require('../config/validateEnv');
 
 const APP_NAME = 'Kheruchiya CRM';
-const INVITE_PATH = '/set-password';
-const RESET_PATH = '/reset-password';
+// Under /api/v1/auth so hosting proxies to Node; root /set-password is served by Flutter SPA
+const INVITE_PATH = '/api/v1/auth/set-password-form';
+const RESET_PATH = '/api/v1/auth/reset-password-form';
 const DEFAULT_FROM = 'Kheruchiya CRM <no-reply@example.com>';
 
 let resendClient = null;
@@ -23,13 +24,21 @@ function getFrom() {
   return trimmed || DEFAULT_FROM;
 }
 
+function normalizeBaseUrl(url) {
+  let base = String(url).trim().replace(/\/+$/, '');
+  if (isProduction() && base.startsWith('http://') && !/localhost|127\.0\.0\.1/i.test(base)) {
+    base = `https://${base.slice('http://'.length)}`;
+  }
+  return base;
+}
+
 function getAppBaseUrl(overrideBaseUrl) {
   if (overrideBaseUrl && String(overrideBaseUrl).trim()) {
-    return String(overrideBaseUrl).trim().replace(/\/+$/, '');
+    return normalizeBaseUrl(overrideBaseUrl);
   }
 
   const resolved = resolveAppBaseUrl();
-  if (resolved) return resolved;
+  if (resolved) return normalizeBaseUrl(resolved);
 
   if (isProduction()) {
     throw new AppError(messages.config.appBaseUrlRequired, 500);
