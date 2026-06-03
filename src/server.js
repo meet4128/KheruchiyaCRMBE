@@ -33,6 +33,7 @@ if (!waVerifyOk) {
 const app = require('./app');
 const { connectDB } = require('./config/db');
 const { logProductionEnvWarnings } = require('./config/validateEnv');
+const { getServerSocketTimeoutMs } = require('./config/httpTimeouts');
 
 logProductionEnvWarnings();
 
@@ -46,6 +47,9 @@ const server = app.listen(PORT, HOST, () => {
   const url = HOST === '0.0.0.0' ? `http://localhost:${PORT}` : `http://${HOST}:${PORT}`;
   console.log(`Server running on port ${PORT}`);
   console.log(`Local:   ${url}`);
+  console.log(
+    `[http] socket timeout ${getServerSocketTimeoutMs()}ms | API request timeout ${process.env.HTTP_REQUEST_TIMEOUT_MS || '120000'}ms`
+  );
   if (HOST === '0.0.0.0') {
     const os = require('os');
     const netInterfaces = os.networkInterfaces();
@@ -62,6 +66,14 @@ const server = app.listen(PORT, HOST, () => {
     }
   }
 });
+
+const socketTimeoutMs = getServerSocketTimeoutMs();
+server.timeout = socketTimeoutMs;
+server.keepAliveTimeout = Math.min(65_000, socketTimeoutMs - 1000);
+server.headersTimeout = server.keepAliveTimeout + 5000;
+if (typeof server.requestTimeout === 'number') {
+  server.requestTimeout = socketTimeoutMs;
+}
 
 process.on('unhandledRejection', (err) => {
   console.error('Unhandled Rejection:', err);

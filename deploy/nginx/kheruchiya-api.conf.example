@@ -1,0 +1,62 @@
+# Example nginx reverse proxy + load balancer for Kheruchiya CRM API
+# Copy to /etc/nginx/sites-available/ and symlink sites-enabled, then nginx -t && reload
+#
+# Align proxy_*_timeout with HTTP_REQUEST_TIMEOUT_MS in Node .env (default 120s)
+
+upstream kheruchiya_api {
+    least_conn;
+    # PM2 cluster on one VPS: single port, PM2 distributes across workers
+    server 127.0.0.1:5001 max_fails=3 fail_timeout=30s;
+    # Multi-port setup (optional): uncomment extra instances
+    # server 127.0.0.1:5002 max_fails=3 fail_timeout=30s;
+    keepalive 32;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name kheruchiyagroup.com;
+
+    # ssl_certificate ...;
+    # ssl_certificate_key ...;
+
+    client_max_body_size 25M;
+
+    # Flutter web (static) — adjust root to your Flutter build output
+    location / {
+        root /var/www/flutter-web;
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/v1/ {
+        proxy_pass http://kheruchiya_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
+    }
+
+    location /webhooks/whatsapp {
+        proxy_pass http://kheruchiya_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 180s;
+        proxy_read_timeout 180s;
+    }
+
+    location /uploads/ {
+        proxy_pass http://kheruchiya_api;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

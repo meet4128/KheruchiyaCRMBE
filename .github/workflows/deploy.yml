@@ -26,5 +26,5 @@ jobs:
             cd /var/www/backend
             git pull origin development-meet
             npm install --production
-            pm2 restart kheruchiya-backend
+            pm2 startOrReload ecosystem.config.cjs --env production
             pm2 save

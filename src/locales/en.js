@@ -168,6 +168,7 @@ module.exports = {
     emailRecipientRequired: 'Email recipient is required',
     emailLinkRequired: 'Email link is required',
     emailSendFailed: 'Failed to send email. Please try again later.',
+    requestTimeout: 'Request timed out. Please try again.',
   },
 
   // ─── Rate limit messages ─────────────────────────────────────────────────

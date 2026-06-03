@@ -13,15 +13,19 @@ const whatsappRoutes = require('./routes/whatsappRoutes');
 const memberRoutes = require('./routes/memberRoutes');
 const passwordPublicRoutes = require('./routes/passwordPublicRoutes');
 const globalErrorHandler = require('./middlewares/globalErrorHandler');
+const requestTimeout = require('./middlewares/requestTimeout');
+const {
+  getRequestTimeoutMs,
+  getWebhookRequestTimeoutMs,
+  getTrustProxySetting,
+} = require('./config/httpTimeouts');
 const AppError = require('./utils/AppError');
 const { messages } = require('./locales');
 
 const app = express();
 
-// Behind BigRock / nginx reverse proxy — needed for correct https + Host in email link fallback
-if (process.env.NODE_ENV === 'production') {
-  app.set('trust proxy', 1);
-}
+// Behind nginx / load balancer — client IP + protocol from X-Forwarded-*
+app.set('trust proxy', getTrustProxySetting());
 
 // Security middleware (CSP disabled so Swagger UI can load - it uses inline scripts)
 app.use(
@@ -37,9 +41,16 @@ const whatsappJsonParser = express.json({
     req.rawBody = buf;
   },
 });
+if (process.env.NODE_ENV !== 'test') {
+  app.use('/webhooks/whatsapp', requestTimeout(getWebhookRequestTimeoutMs()));
+}
 app.use('/webhooks/whatsapp', whatsappJsonParser, whatsappWebhookRoutes);
 
 app.use(express.json());
+
+if (process.env.NODE_ENV !== 'test') {
+  app.use('/api/v1', requestTimeout(getRequestTimeoutMs()));
+}
 
 // Member document uploads (PDF / images) — served at /uploads/members/<filename>
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
