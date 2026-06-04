@@ -14,7 +14,6 @@ const memberRoutes = require('./routes/memberRoutes');
 const passwordPublicRoutes = require('./routes/passwordPublicRoutes');
 const globalErrorHandler = require('./middlewares/globalErrorHandler');
 const requestTimeout = require('./middlewares/requestTimeout');
-
 const {
   getRequestTimeoutMs,
   getWebhookRequestTimeoutMs,
