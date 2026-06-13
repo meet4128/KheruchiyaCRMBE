@@ -36,4 +36,18 @@ const getInquiryById = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { createInquiry, getInquiries, getInquiryById };
+const getChecklistPriorityDefaults = asyncHandler(async (req, res) => {
+  const priorities = inquiryService.getChecklistPriorityDefaults();
+
+  res.status(200).json({
+    status: 'success',
+    data: { priorities },
+  });
+});
+
+module.exports = {
+  createInquiry,
+  getInquiries,
+  getInquiryById,
+  getChecklistPriorityDefaults,
+};

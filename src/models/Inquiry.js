@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { CHECKLIST_PRIORITY_VALUES } = require('../constants/checklistPriority');
 const { INQUIRY_STATUS_VALUES } = require('../constants/inquiryStatus');
 const { messages } = require('../locales');
 
@@ -63,7 +64,12 @@ const checklistItemSchema = new mongoose.Schema(
   {
     user: { type: String, trim: true, default: '' },
     dueDate: { type: Date, set: (v) => (v === '' || v === null ? undefined : v) },
-    priority: { type: String, trim: true, default: '' },
+    priority: {
+      type: String,
+      enum: CHECKLIST_PRIORITY_VALUES,
+      required: true,
+      trim: true,
+    },
     category: { type: String, trim: true, default: '' },
     inLoop: { type: Boolean, default: false },
     repeat: { type: mongoose.Schema.Types.Mixed },

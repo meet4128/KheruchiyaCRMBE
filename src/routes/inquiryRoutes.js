@@ -12,6 +12,11 @@ const purchaseTeamChatRoutes = require('./purchaseTeamChatRoutes');
 
 router.post('/', authMiddleware, validateInquiry, inquiryController.createInquiry);
 router.get('/', authMiddleware, validateInquiryQuery, inquiryController.getInquiries);
+router.get(
+  '/checklist-priority-defaults',
+  authMiddleware,
+  inquiryController.getChecklistPriorityDefaults
+);
 router.get('/:id', authMiddleware, inquiryController.getInquiryById);
 router.use('/:inquiryId/amendments', amendmentRoutes);
 router.use('/:inquiryId/purchase-chats', purchaseTeamChatRoutes);

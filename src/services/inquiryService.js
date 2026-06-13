@@ -2,7 +2,9 @@ const mongoose = require('mongoose');
 const Inquiry = require('../models/Inquiry');
 const amendmentService = require('./amendmentService');
 const AppError = require('../utils/AppError');
+const { getChecklistPriorityDefaults } = require('../constants/checklistPriority');
 const { INQUIRY_STATUS_VALUES } = require('../constants/inquiryStatus');
+const { applyChecklistDueDates } = require('../utils/checklistDueDate');
 const { messages } = require('../locales');
 
 /** Allowed sort fields to prevent query injection */
@@ -27,7 +29,12 @@ const createInquiry = async (payload) => {
     throw new AppError(messages.errors.referenceNumberExists, 409);
   }
 
-  const inquiry = await Inquiry.create(payload);
+  const payloadWithDueDates = {
+    ...payload,
+    checklist: applyChecklistDueDates(payload.checklist),
+  };
+
+  const inquiry = await Inquiry.create(payloadWithDueDates);
   return inquiry;
 };
 
@@ -116,4 +123,9 @@ const getInquiryById = async (id) => {
   };
 };
 
-module.exports = { createInquiry, getAllInquiries, getInquiryById };
+module.exports = {
+  createInquiry,
+  getAllInquiries,
+  getInquiryById,
+  getChecklistPriorityDefaults,
+};

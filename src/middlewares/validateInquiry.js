@@ -1,4 +1,5 @@
 const Joi = require('joi');
+const { CHECKLIST_PRIORITY_VALUES } = require('../constants/checklistPriority');
 const { INQUIRY_STATUS_VALUES } = require('../constants/inquiryStatus');
 const { messages } = require('../locales');
 
@@ -50,7 +51,14 @@ const airTicketSchema = Joi.object({
 const checklistItemSchema = Joi.object({
   user: Joi.string().trim().optional().allow(''),
   dueDate: Joi.date().optional().allow('').empty(''),
-  priority: Joi.string().trim().optional().allow(''),
+  priority: Joi.string()
+    .valid(...CHECKLIST_PRIORITY_VALUES)
+    .required()
+    .messages({
+      'any.only': t.checklistPriorityInvalid,
+      'any.required': t.checklistPriorityRequired,
+      'string.empty': t.checklistPriorityRequired,
+    }),
   category: Joi.string().trim().optional().allow(''),
   inLoop: Joi.boolean().optional().default(false),
   repeat: Joi.object().optional(),

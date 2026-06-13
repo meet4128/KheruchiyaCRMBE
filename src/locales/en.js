@@ -18,6 +18,8 @@ module.exports = {
       typeOfBookingRequired: 'Type of Booking is required',
       phoneDigitsOnly: 'Phone/Reference number must contain digits only',
       flightSegmentsMin: 'ROUND_TRIP and MULTI_CITY require at least 2 flight segments',
+      checklistPriorityRequired: 'Checklist priority is required',
+      checklistPriorityInvalid: 'Checklist priority must be HIGH, MEDIUM, or LOW',
     },
     failed: 'Validation Failed',
     inquiryQuery: {

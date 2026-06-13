@@ -62,6 +62,62 @@ describe('inquiryService', () => {
       expect(result).toEqual(saved);
       expect(Inquiry.create).toHaveBeenCalledWith(validPayload);
     });
+
+    it('auto-sets checklist dueDate from priority when dueDate is omitted', async () => {
+      Inquiry.findOne.mockResolvedValue(null);
+      Inquiry.create.mockImplementation((payload) =>
+        Promise.resolve({ _id: 'new-id', ...payload })
+      );
+
+      const baseTime = new Date('2026-06-12T10:00:00.000Z');
+      jest.useFakeTimers().setSystemTime(baseTime);
+
+      const payload = {
+        ...validPayload,
+        checklist: [{ priority: 'MEDIUM', user: 'agent-1' }],
+      };
+
+      await inquiryService.createInquiry(payload);
+
+      expect(Inquiry.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          checklist: [
+            expect.objectContaining({
+              priority: 'MEDIUM',
+              dueDate: new Date('2026-06-12T18:00:00.000Z'),
+            }),
+          ],
+        })
+      );
+
+      jest.useRealTimers();
+    });
+
+    it('keeps explicit checklist dueDate when provided', async () => {
+      Inquiry.findOne.mockResolvedValue(null);
+      Inquiry.create.mockImplementation((payload) =>
+        Promise.resolve({ _id: 'new-id', ...payload })
+      );
+
+      const customDueDate = new Date('2026-07-01T12:00:00.000Z');
+      const payload = {
+        ...validPayload,
+        checklist: [{ priority: 'HIGH', dueDate: customDueDate }],
+      };
+
+      await inquiryService.createInquiry(payload);
+
+      expect(Inquiry.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          checklist: [
+            expect.objectContaining({
+              priority: 'HIGH',
+              dueDate: customDueDate,
+            }),
+          ],
+        })
+      );
+    });
   });
 
   describe('getAllInquiries', () => {

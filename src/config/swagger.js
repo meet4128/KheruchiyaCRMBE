@@ -86,13 +86,32 @@ const options = {
         },
         ChecklistItem: {
           type: 'object',
+          required: ['priority'],
           properties: {
             user: { type: 'string', nullable: true },
-            dueDate: { type: 'string', format: 'date-time', nullable: true },
-            priority: { type: 'string', nullable: true },
+            dueDate: {
+              type: 'string',
+              format: 'date-time',
+              nullable: true,
+              description:
+                'Optional. When omitted, the server sets due date from priority (HIGH 15 min, MEDIUM 8 h, LOW 24 h).',
+            },
+            priority: {
+              type: 'string',
+              enum: ['HIGH', 'MEDIUM', 'LOW'],
+            },
             category: { type: 'string', nullable: true },
             inLoop: { type: 'boolean', default: false },
             repeat: { type: 'object' },
+          },
+        },
+        ChecklistPriorityDefault: {
+          type: 'object',
+          properties: {
+            value: { type: 'string', enum: ['HIGH', 'MEDIUM', 'LOW'] },
+            dueInMinutes: { type: 'number', description: 'Present for HIGH (15)' },
+            dueInHours: { type: 'number', description: 'Present for MEDIUM (8) and LOW (24)' },
+            dueInMs: { type: 'number' },
           },
         },
         InquiryCreate: {
@@ -1017,6 +1036,40 @@ const spec = {
                         limit: { type: 'integer' },
                         totalItems: { type: 'integer' },
                         totalPages: { type: 'integer' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Authentication required' },
+        },
+      },
+    },
+    '/api/v1/inquiries/checklist-priority-defaults': {
+      get: {
+        tags: ['Inquiries'],
+        summary: 'Checklist priority due-date defaults',
+        description:
+          'Returns server-defined due-date offsets for checklist priorities: HIGH 15 minutes, MEDIUM 8 hours, LOW 24 hours from assignment time.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Priority defaults',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        priorities: {
+                          type: 'array',
+                          items: { $ref: '#/components/schemas/ChecklistPriorityDefault' },
+                        },
                       },
                     },
                   },
