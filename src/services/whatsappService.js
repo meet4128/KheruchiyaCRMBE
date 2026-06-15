@@ -91,6 +91,81 @@ const parseInboundMessages = (body) => {
   return results;
 };
 
+/**
+ * @param {object} body
+ * @returns {Array<{ wamid: string, status: string, recipientId?: string, timestamp?: string, errors?: object[] }>}
+ */
+const parseDeliveryStatuses = (body) => {
+  const results = [];
+  if (!body || body.object !== 'whatsapp_business_account' || !Array.isArray(body.entry)) {
+    return results;
+  }
+
+  for (const entry of body.entry) {
+    const changes = entry?.changes;
+    if (!Array.isArray(changes)) continue;
+
+    for (const change of changes) {
+      if (change?.field !== 'messages' || !change.value) continue;
+      const statuses = change.value.statuses;
+      if (!Array.isArray(statuses)) continue;
+
+      for (const status of statuses) {
+        if (!status?.id || !status?.status) continue;
+        results.push({
+          wamid: status.id,
+          status: status.status,
+          recipientId: status.recipient_id,
+          timestamp: String(status.timestamp ?? ''),
+          errors: status.errors,
+        });
+      }
+    }
+  }
+
+  return results;
+};
+
+const formatDeliveryError = (errors) => {
+  const first = errors?.[0];
+  if (!first) return undefined;
+  const code = first.code != null ? String(first.code) : '';
+  const detail = first.message || first.title || first.error_data?.details || 'Delivery failed';
+  return code ? `${code}: ${detail}` : detail;
+};
+
+const applyDeliveryStatuses = async (statuses) => {
+  for (const s of statuses) {
+    const deliveryError = s.status === 'failed' ? formatDeliveryError(s.errors) : undefined;
+
+    await WhatsappMessage.findOneAndUpdate(
+      { wamid: s.wamid },
+      {
+        $set: {
+          deliveryStatus: s.status,
+          statusUpdatedAt: waTimestampFromUnix(s.timestamp) || new Date(),
+          ...(deliveryError ? { deliveryError } : {}),
+        },
+      }
+    );
+
+    if (s.status === 'failed') {
+      log.error('[WhatsApp delivery failed]', {
+        wamid: s.wamid,
+        recipient: s.recipientId,
+        error: deliveryError,
+        errors: s.errors,
+      });
+    } else {
+      log.info('[WhatsApp delivery status]', {
+        wamid: s.wamid,
+        status: s.status,
+        recipient: s.recipientId,
+      });
+    }
+  }
+};
+
 const buildWhatsappMessageFields = (m) => ({
   wamid: m.id,
   direction: WHATSAPP_MESSAGE_DIRECTION.INBOUND,
@@ -194,6 +269,11 @@ const persistOutboundMessage = async ({
 };
 
 const processInboundWebhook = async (body) => {
+  const statuses = parseDeliveryStatuses(body);
+  if (statuses.length > 0) {
+    await applyDeliveryStatuses(statuses);
+  }
+
   const messages = parseInboundMessages(body);
   if (messages.length > 0) {
     await persistInboundMessages(messages);
@@ -207,6 +287,11 @@ const processInboundWebhook = async (body) => {
     }
     return;
   }
+
+  if (statuses.length > 0) {
+    return;
+  }
+
   if (body?.entry?.length) {
     log.info('[WhatsApp webhook] received unsupported or empty messages payload');
   }
@@ -304,6 +389,7 @@ const sendMessage = async ({
 
   const wamid = data?.messages?.[0]?.id;
   if (wamid) {
+    log.info('[WhatsApp send accepted by Meta]', { wamid, to, type });
     await persistOutboundMessage({ wamid, to, text, type, mediaUrl, fileName });
     if (sessionId && inquiryId) {
       await amendmentService.saveSessionMessage({
@@ -421,8 +507,10 @@ const getMessagesByPeer = async (peerPhone, queryParams = {}) => {
 
 module.exports = {
   parseInboundMessages,
+  parseDeliveryStatuses,
   persistInboundMessages,
   persistOutboundMessage,
+  applyDeliveryStatuses,
   processInboundWebhook,
   sendMessage,
   sendTextMessage,

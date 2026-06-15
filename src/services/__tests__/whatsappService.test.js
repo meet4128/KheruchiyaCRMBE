@@ -1,4 +1,4 @@
-const { parseInboundMessages } = require('../whatsappService');
+const { parseInboundMessages, parseDeliveryStatuses } = require('../whatsappService');
 
 describe('whatsappService.parseInboundMessages', () => {
   it('returns empty array for invalid body', () => {
@@ -113,5 +113,54 @@ describe('whatsappService.parseInboundMessages', () => {
     expect(out[0].type).toBe('image');
     expect(out[0].mediaId).toBe('IMG_MEDIA_ID');
     expect(out[0].text).toBe('Ticket');
+  });
+});
+
+describe('whatsappService.parseDeliveryStatuses', () => {
+  it('returns empty array for invalid body', () => {
+    expect(parseDeliveryStatuses(null)).toEqual([]);
+    expect(parseDeliveryStatuses({ object: 'other' })).toEqual([]);
+  });
+
+  it('extracts failed delivery status from webhook shape', () => {
+    const body = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                statuses: [
+                  {
+                    id: 'wamid.out',
+                    status: 'failed',
+                    timestamp: '1710000003',
+                    recipient_id: '918866172737',
+                    errors: [
+                      {
+                        code: 131047,
+                        title: 'Re-engagement message',
+                        message: 'Re-engagement message',
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const out = parseDeliveryStatuses(body);
+    expect(out).toEqual([
+      {
+        wamid: 'wamid.out',
+        status: 'failed',
+        recipientId: '918866172737',
+        timestamp: '1710000003',
+        errors: expect.any(Array),
+      },
+    ]);
   });
 });

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { WHATSAPP_DELIVERY_STATUS_VALUES } = require('../constants/whatsappDeliveryStatus');
 const { WHATSAPP_MESSAGE_DIRECTIONS } = require('../constants/whatsappMessageDirection');
 const { AMENDMENT_MESSAGE_TYPE_VALUES } = require('../constants/amendmentMessageType');
 
@@ -23,6 +24,12 @@ const whatsappMessageSchema = new mongoose.Schema(
     fileName: { type: String, trim: true },
     mimeType: { type: String, trim: true },
     waTimestamp: { type: Date },
+    deliveryStatus: {
+      type: String,
+      enum: WHATSAPP_DELIVERY_STATUS_VALUES,
+    },
+    deliveryError: { type: String, trim: true },
+    statusUpdatedAt: { type: Date },
   },
   {
     timestamps: true,
