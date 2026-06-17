@@ -116,6 +116,37 @@ describe('whatsappService.parseInboundMessages', () => {
   });
 });
 
+describe('whatsappService.buildGraphBody', () => {
+  it('builds template payload for business-initiated messages', () => {
+    const { buildGraphBody } = require('../whatsappService');
+    const body = buildGraphBody({
+      to: '918460166646',
+      type: 'template',
+      template: {
+        name: 'customer_greeting',
+        language: 'en',
+        bodyParams: ['Meet'],
+      },
+    });
+
+    expect(body).toEqual({
+      messaging_product: 'whatsapp',
+      to: '918460166646',
+      type: 'template',
+      template: {
+        name: 'customer_greeting',
+        language: { code: 'en' },
+        components: [
+          {
+            type: 'body',
+            parameters: [{ type: 'text', text: 'Meet' }],
+          },
+        ],
+      },
+    });
+  });
+});
+
 describe('whatsappService.parseDeliveryStatuses', () => {
   it('returns empty array for invalid body', () => {
     expect(parseDeliveryStatuses(null)).toEqual([]);

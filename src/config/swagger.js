@@ -276,14 +276,40 @@ const options = {
             },
             type: {
               type: 'string',
-              enum: ['text', 'document', 'image'],
+              enum: ['text', 'document', 'image', 'template'],
               default: 'text',
+              description:
+                'Use **template** for first outbound message (no 24h window). Use **text** only when customer messaged within 24 hours.',
             },
             text: {
               type: 'string',
               maxLength: 4096,
-              description: 'Message body or document/image caption',
+              description: 'Message body or document/image caption. Required when type is text.',
               example: 'Your flight options...',
+            },
+            template: {
+              type: 'object',
+              description:
+                'Required when type is template. Template must be approved in WhatsApp Manager.',
+              properties: {
+                name: {
+                  type: 'string',
+                  pattern: '^[a-z0-9_]+$',
+                  example: 'customer_greeting',
+                },
+                language: { type: 'string', example: 'en' },
+                bodyParams: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Replaces {{1}}, {{2}}, … in template body',
+                },
+                headerParams: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Replaces variables in template header (if any)',
+                },
+              },
+              required: ['name', 'language'],
             },
             sessionId: {
               type: 'string',
@@ -2118,7 +2144,7 @@ const spec = {
         tags: ['WhatsApp'],
         summary: 'Send WhatsApp message (text / document / image)',
         description:
-          '**Sales or admin.** Sends via WhatsApp Cloud API. For amendment live chat, include `sessionId` + `inquiryId`. Document/image require prior **session upload** and `PUBLIC_BASE_URL` for Meta to fetch the file.',
+          '**Sales or admin.** Sends via WhatsApp Cloud API. Use **type=template** for first outbound message (customer has not messaged you). Use **type=text** only within 24h after customer messages you. Document/image require prior **session upload** and `PUBLIC_BASE_URL`.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,

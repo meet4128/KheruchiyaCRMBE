@@ -2,11 +2,12 @@ const asyncHandler = require('../utils/asyncHandler');
 const whatsappService = require('../services/whatsappService');
 
 const sendMessage = asyncHandler(async (req, res) => {
-  const { to, type, text, sessionId, inquiryId, mediaUrl, fileName } = req.body;
+  const { to, type, text, template, sessionId, inquiryId, mediaUrl, fileName } = req.body;
   const graphResponse = await whatsappService.sendMessage({
     to,
     type,
     text,
+    template,
     sessionId,
     inquiryId,
     mediaUrl,

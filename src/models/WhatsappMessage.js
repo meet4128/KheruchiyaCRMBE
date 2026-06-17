@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const { WHATSAPP_DELIVERY_STATUS_VALUES } = require('../constants/whatsappDeliveryStatus');
+const { WHATSAPP_MESSAGE_TYPE_VALUES } = require('../constants/whatsappSendType');
 const { WHATSAPP_MESSAGE_DIRECTIONS } = require('../constants/whatsappMessageDirection');
-const { AMENDMENT_MESSAGE_TYPE_VALUES } = require('../constants/amendmentMessageType');
 
 const whatsappMessageSchema = new mongoose.Schema(
   {
@@ -16,7 +16,7 @@ const whatsappMessageSchema = new mongoose.Schema(
     type: {
       type: String,
       required: true,
-      enum: AMENDMENT_MESSAGE_TYPE_VALUES,
+      enum: WHATSAPP_MESSAGE_TYPE_VALUES,
       default: 'text',
     },
     text: { type: String, trim: true, default: '' },

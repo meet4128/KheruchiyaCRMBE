@@ -1,6 +1,7 @@
 const WhatsappMessage = require('../models/WhatsappMessage');
 const { WHATSAPP_MESSAGE_DIRECTION } = require('../constants/whatsappMessageDirection');
 const { AMENDMENT_MESSAGE_TYPE } = require('../constants/amendmentMessageType');
+const { WHATSAPP_SEND_TYPE } = require('../constants/whatsappSendType');
 const amendmentService = require('./amendmentService');
 const { storeInboundMedia } = require('../utils/whatsappInboundMedia');
 const { log } = require('../utils/logger');
@@ -306,8 +307,51 @@ const graphMessagesUrl = () => {
   return `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
 };
 
-const buildGraphBody = ({ to, type, text, mediaUrl, fileName }) => {
+const buildTemplateComponents = ({ bodyParams = [], headerParams = [] }) => {
+  const components = [];
+  if (headerParams.length > 0) {
+    components.push({
+      type: 'header',
+      parameters: headerParams.map((text) => ({ type: 'text', text })),
+    });
+  }
+  if (bodyParams.length > 0) {
+    components.push({
+      type: 'body',
+      parameters: bodyParams.map((text) => ({ type: 'text', text })),
+    });
+  }
+  return components.length ? components : undefined;
+};
+
+const buildTemplateGraphPayload = (template) => {
+  const payload = {
+    name: template.name,
+    language: { code: template.language },
+  };
+  const components = buildTemplateComponents(template);
+  if (components) {
+    payload.components = components;
+  }
+  return payload;
+};
+
+const templateDisplayText = (template) => {
+  const params = [...(template.headerParams || []), ...(template.bodyParams || [])];
+  const suffix = params.length ? `: ${params.join(', ')}` : '';
+  return `[template:${template.name}]${suffix}`;
+};
+
+const buildGraphBody = ({ to, type, text, mediaUrl, fileName, template }) => {
   const base = { messaging_product: 'whatsapp', to };
+
+  if (type === WHATSAPP_SEND_TYPE.TEMPLATE) {
+    return {
+      ...base,
+      type: 'template',
+      template: buildTemplateGraphPayload(template),
+    };
+  }
 
   if (type === AMENDMENT_MESSAGE_TYPE.TEXT) {
     return { ...base, type: 'text', text: { body: text } };
@@ -340,12 +384,13 @@ const buildGraphBody = ({ to, type, text, mediaUrl, fileName }) => {
 };
 
 /**
- * @param {{ to: string, type?: string, text?: string, sessionId?: string, inquiryId?: string, mediaUrl?: string, fileName?: string, userId?: string }} params
+ * @param {{ to: string, type?: string, text?: string, template?: object, sessionId?: string, inquiryId?: string, mediaUrl?: string, fileName?: string, userId?: string }} params
  */
 const sendMessage = async ({
   to,
   type = AMENDMENT_MESSAGE_TYPE.TEXT,
   text = '',
+  template,
   sessionId,
   inquiryId,
   mediaUrl,
@@ -357,16 +402,25 @@ const sendMessage = async ({
     throw new AppError('WhatsApp access token is not configured', 503);
   }
 
-  if (type !== AMENDMENT_MESSAGE_TYPE.TEXT && !mediaUrl) {
+  if (
+    (type === AMENDMENT_MESSAGE_TYPE.DOCUMENT || type === AMENDMENT_MESSAGE_TYPE.IMAGE) &&
+    !mediaUrl
+  ) {
     throw new AppError('mediaUrl is required for document or image messages', 422);
   }
+
+  if (type === WHATSAPP_SEND_TYPE.TEMPLATE && !template?.name) {
+    throw new AppError('template.name is required for template messages', 422);
+  }
+
+  const outboundText = type === WHATSAPP_SEND_TYPE.TEMPLATE ? templateDisplayText(template) : text;
 
   if (sessionId && inquiryId && userId) {
     await amendmentService.registerActiveSession(inquiryId, sessionId, to, userId);
   }
 
   const url = graphMessagesUrl();
-  const graphBody = buildGraphBody({ to, type, text, mediaUrl, fileName });
+  const graphBody = buildGraphBody({ to, type, text, mediaUrl, fileName, template });
 
   const res = await fetch(url, {
     method: 'POST',
@@ -390,15 +444,24 @@ const sendMessage = async ({
   const wamid = data?.messages?.[0]?.id;
   if (wamid) {
     log.info('[WhatsApp send accepted by Meta]', { wamid, to, type });
-    await persistOutboundMessage({ wamid, to, text, type, mediaUrl, fileName });
+    await persistOutboundMessage({
+      wamid,
+      to,
+      text: outboundText,
+      type,
+      mediaUrl,
+      fileName,
+    });
     if (sessionId && inquiryId) {
+      const amendmentType =
+        type === WHATSAPP_SEND_TYPE.TEMPLATE ? AMENDMENT_MESSAGE_TYPE.TEXT : type;
       await amendmentService.saveSessionMessage({
         inquiryId,
         sessionId,
         direction: WHATSAPP_MESSAGE_DIRECTION.OUTBOUND,
         senderType: 'employee',
-        type,
-        text: text || '',
+        type: amendmentType,
+        text: outboundText,
         mediaUrl,
         fileName,
         mimeType: undefined,
@@ -512,6 +575,8 @@ module.exports = {
   persistOutboundMessage,
   applyDeliveryStatuses,
   processInboundWebhook,
+  buildGraphBody,
+  buildTemplateGraphPayload,
   sendMessage,
   sendTextMessage,
   getConversations,
