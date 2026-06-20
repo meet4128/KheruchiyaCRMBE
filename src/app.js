@@ -55,14 +55,35 @@ if (process.env.NODE_ENV !== 'test') {
 // Member document uploads (PDF / images) — served at /uploads/members/<filename>
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
+// Chat-style endpoints the frontend polls frequently — excluded from the general
+// limiter below and given their own higher budget so polling doesn't 429 the UI.
+const isMessagesPollingPath = (path) =>
+  /\/whatsapp\/conversations(\/|$)/.test(path) ||
+  /\/amendments\/(session\/)?[^/]+\/messages$/.test(path);
+
 // Rate limiting: 100 requests per 15 min per IP (general); off in test to avoid flaky parallel runs
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   message: { status: 'error', message: messages.rateLimit.tooManyRequests },
+  skip: (req) => isMessagesPollingPath(req.path),
 });
 if (process.env.NODE_ENV !== 'test') {
   app.use('/api/v1/', generalLimiter);
+}
+
+// Messages/conversations polling: 120 requests per minute per IP (chat UI polls every few seconds)
+const messagesPollingLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  message: { status: 'error', message: messages.rateLimit.tooManyRequests },
+});
+if (process.env.NODE_ENV !== 'test') {
+  app.use('/api/v1/whatsapp/conversations', messagesPollingLimiter);
+  app.use(
+    /^\/api\/v1\/inquiries\/[^/]+\/amendments\/(session\/)?[^/]+\/messages$/,
+    messagesPollingLimiter
+  );
 }
 
 // Stricter limit for login: 5 attempts per 15 min (brute-force protection)
