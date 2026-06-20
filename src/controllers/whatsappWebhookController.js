@@ -27,6 +27,10 @@ const verifyWebhook = asyncHandler(async (req, res) => {
  * Meta webhook events (POST). Respond immediately; process async.
  */
 const receiveWebhook = asyncHandler(async (req, res) => {
+  log.info('[WhatsApp webhook] POST received', {
+    object: req.body?.object,
+    entries: req.body?.entry?.length ?? 0,
+  });
   res.sendStatus(200);
 
   const body = req.body;

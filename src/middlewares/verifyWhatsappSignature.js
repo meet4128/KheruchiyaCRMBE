@@ -16,7 +16,7 @@ function isHubSignatureValid(expectedHex, receivedHex) {
  * When WHATSAPP_APP_SECRET is unset, verification is skipped (local/dev only — set secret in production).
  */
 const verifyWhatsappSignature = (req, res, next) => {
-  const appSecret = process.env.WHATSAPP_APP_SECRET;
+  const appSecret = (process.env.WHATSAPP_APP_SECRET || '').trim();
 
   if (!appSecret) {
     if (process.env.NODE_ENV === 'production') {
@@ -27,11 +27,13 @@ const verifyWhatsappSignature = (req, res, next) => {
 
   const signature = req.get('X-Hub-Signature-256');
   if (!signature || !signature.startsWith('sha256=')) {
+    log.warn('[WhatsApp webhook] rejected: missing X-Hub-Signature-256 header');
     return res.sendStatus(403);
   }
 
   const rawBody = req.rawBody;
   if (!rawBody || !Buffer.isBuffer(rawBody)) {
+    log.warn('[WhatsApp webhook] rejected: raw body not available for signature check');
     return res.sendStatus(403);
   }
 
@@ -39,6 +41,9 @@ const verifyWhatsappSignature = (req, res, next) => {
   const receivedHex = signature.slice('sha256='.length);
 
   if (!isHubSignatureValid(expectedHex, receivedHex)) {
+    log.warn(
+      '[WhatsApp webhook] rejected: signature mismatch (check WHATSAPP_APP_SECRET matches Meta App Secret)'
+    );
     return res.sendStatus(403);
   }
 
