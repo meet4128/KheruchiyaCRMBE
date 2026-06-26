@@ -616,6 +616,75 @@ const options = {
             cancelChequeDocumentUrl: { type: 'string', format: 'uri', nullable: true },
           },
         },
+        PaymentInstallment: {
+          type: 'object',
+          required: ['amount'],
+          properties: {
+            amount: { type: 'number', minimum: 0, example: 25000 },
+            dueDate: { type: 'string', format: 'date-time', nullable: true },
+            receivedDate: { type: 'string', format: 'date-time', nullable: true },
+            mode: {
+              type: 'string',
+              enum: ['Cash', 'UPI', 'Cheque'],
+              nullable: true,
+              description: 'Unset until the payment is received',
+            },
+            status: {
+              type: 'string',
+              description:
+                'Free-text label computed on the frontend from dueDate vs receivedDate (e.g. "On Time" / "Late")',
+              example: 'On Time',
+            },
+            paymentProofUrl: {
+              type: 'string',
+              description: 'Path from POST .../payment-plan/uploads',
+              example: '/uploads/payment-proofs/507f1f77bcf86cd799439011/172000-abc.jpg',
+            },
+          },
+        },
+        PaymentPlanSaveRequest: {
+          type: 'object',
+          required: ['totalAmount', 'numberOfInstallments', 'installments'],
+          description:
+            'Upsert: creates the plan on first save, overwrites it (header + full installment list) on subsequent saves. `installments.length` must equal `numberOfInstallments`.',
+          properties: {
+            travelDate: {
+              type: 'string',
+              format: 'date-time',
+              nullable: true,
+              description: 'Travel date & time',
+            },
+            bookingType: { type: 'string', example: 'Round Trip' },
+            totalAmount: { type: 'number', minimum: 0, example: 50000 },
+            numberOfInstallments: { type: 'integer', minimum: 1, example: 3 },
+            paymentReceivedTillNow: { type: 'number', minimum: 0, default: 0, example: 0 },
+            installments: {
+              type: 'array',
+              minItems: 1,
+              items: { $ref: '#/components/schemas/PaymentInstallment' },
+            },
+          },
+        },
+        PaymentPlan: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            inquiryId: { type: 'string' },
+            travelDate: { type: 'string', format: 'date-time', nullable: true },
+            bookingType: { type: 'string' },
+            totalAmount: { type: 'number' },
+            numberOfInstallments: { type: 'integer' },
+            paymentReceivedTillNow: { type: 'number' },
+            installments: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/PaymentInstallment' },
+            },
+            createdBy: { type: 'string' },
+            updatedBy: { type: 'string' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
       },
     },
     tags: [
@@ -632,6 +701,11 @@ const options = {
           'Inquiry amendments — finalize from Q&A chat (sales/admin). Live session uses sessionId.',
       },
       { name: 'Members', description: 'Member (HR) management' },
+      {
+        name: 'Payments',
+        description:
+          'Inquiry payment terms — travel/booking header + installment plan with proofs.',
+      },
       {
         name: 'WhatsApp',
         description: 'WhatsApp Cloud API webhook, conversations, messages, and agent send',
@@ -1611,6 +1685,156 @@ const spec = {
           400: { description: 'No file or invalid type' },
           401: { description: 'Authentication required' },
           403: { description: 'Forbidden' },
+        },
+      },
+    },
+    '/api/v1/inquiries/{inquiryId}/payment-plan': {
+      get: {
+        tags: ['Payments'],
+        summary: 'Get payment plan for inquiry',
+        description: 'Returns the payment terms (header + installments) for the inquiry.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'inquiryId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', example: '507f1f77bcf86cd799439011' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Payment plan',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        paymentPlan: { $ref: '#/components/schemas/PaymentPlan' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden (requires sales, account, or admin)' },
+          404: { description: 'Inquiry or payment plan not found' },
+        },
+      },
+      put: {
+        tags: ['Payments'],
+        summary: 'Save (create or overwrite) payment plan',
+        description:
+          '**Sales, account, or admin.** Upserts one payment plan per inquiry. Upload proofs first via POST .../uploads, then include the returned `paymentProofUrl` per installment. `installments.length` must equal `numberOfInstallments`.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'inquiryId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', example: '507f1f77bcf86cd799439011' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/PaymentPlanSaveRequest' },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Payment plan saved',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        paymentPlan: { $ref: '#/components/schemas/PaymentPlan' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden (requires sales, account, or admin)' },
+          404: { description: 'Inquiry not found' },
+          422: { description: 'Validation failed' },
+        },
+      },
+    },
+    '/api/v1/inquiries/{inquiryId}/payment-plan/uploads': {
+      post: {
+        tags: ['Payments'],
+        summary: 'Upload payment proof file',
+        description:
+          'Multipart field `file`. PDF, JPEG, JPG, PNG; max 5MB. Returns `paymentProofUrl` to set on an installment in PUT .../payment-plan.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'inquiryId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', example: '507f1f77bcf86cd799439011' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['file'],
+                properties: {
+                  file: { type: 'string', format: 'binary' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: 'File uploaded',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        paymentProofUrl: {
+                          type: 'string',
+                          example:
+                            '/uploads/payment-proofs/507f1f77bcf86cd799439011/172000-abc.jpg',
+                        },
+                        fileName: { type: 'string' },
+                        mimeType: { type: 'string' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'No file or invalid type' },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden (requires sales, account, or admin)' },
+          404: { description: 'Inquiry not found' },
         },
       },
     },

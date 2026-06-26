@@ -112,6 +112,19 @@ module.exports = {
       mediaUrlInvalid:
         'mediaUrl must be a path from POST .../purchase-chats/{purchaseTeamMemberId}/uploads',
     },
+    payment: {
+      totalAmountRequired: 'Total amount to be received is required',
+      numberOfInstallmentsRequired: 'Number of installments must be at least 1',
+      installmentsRequired: 'At least one installment is required',
+      installmentsCountMismatch:
+        'Number of installment rows must match the selected number of installments',
+      installmentAmountRequired: 'Installment amount is required',
+      modeInvalid: 'Payment mode must be Cash, UPI, or Cheque',
+      proofUrlInvalid: 'paymentProofUrl must be a path returned from POST .../payment-plan/uploads',
+      proofFileRequired: 'No file uploaded. Use field name "file".',
+      proofMimeInvalid: 'Only PDF, JPEG, JPG, or PNG files are allowed',
+      proofTooLarge: 'File is too large (max 5MB)',
+    },
     password: {
       tokenRequired: 'Token is required',
       tokenInvalid: 'Token format is invalid',
@@ -164,6 +177,7 @@ module.exports = {
     amendmentNotFound: 'Amendment not found',
     amendmentSessionNotFound: 'Active amendment session not found or already finalized',
     amendmentSessionFinalized: 'This chat session is finalized; start a new session',
+    paymentPlanNotFound: 'Payment plan not found for this inquiry',
     somethingWentWrong: 'Something went wrong',
     invalidIdOrFormat: 'Invalid ID or data format',
     authTokenInvalid: 'Token is invalid',
