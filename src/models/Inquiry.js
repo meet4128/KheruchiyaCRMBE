@@ -1,6 +1,14 @@
 const mongoose = require('mongoose');
 const { CHECKLIST_PRIORITY_VALUES } = require('../constants/checklistPriority');
 const { INQUIRY_STATUS_VALUES } = require('../constants/inquiryStatus');
+const {
+  HOTEL_PROPERTY_TYPES,
+  HOTEL_CATEGORIES,
+  HOTEL_ROOM_VIEWS,
+  HOTEL_AMENITIES,
+  HOTEL_MEAL_PLANS,
+  HOTEL_TRANSFERS,
+} = require('../constants/hotelBooking');
 const { messages } = require('../locales');
 
 // ─── Sub-documents for clean schema organization ────────────────────────────
@@ -59,6 +67,27 @@ const airTicketSchema = new mongoose.Schema(
   { _id: false }
 );
 
+/** Hotel Booking details — embedded sub-document (list fields hold label strings) */
+const hotelBookingSchema = new mongoose.Schema(
+  {
+    city: { type: String, required: true, trim: true },
+    checkInDate: { type: Date, required: true },
+    checkOutDate: { type: Date, required: true },
+    rooms: { type: Number, required: true, min: 1 },
+    adults: { type: Number, required: true, min: 1 },
+    propertyType: { type: [String], enum: HOTEL_PROPERTY_TYPES, default: [] },
+    hotelCategory: { type: [String], enum: HOTEL_CATEGORIES, default: [] },
+    roomViews: { type: [String], enum: HOTEL_ROOM_VIEWS, default: [] },
+    amenities: { type: [String], enum: HOTEL_AMENITIES, default: [] },
+    mealPlan: { type: [String], enum: HOTEL_MEAL_PLANS, default: [] },
+    transfers: { type: [String], enum: HOTEL_TRANSFERS, default: [] },
+    budgetMin: { type: String, trim: true, default: '' },
+    budgetMax: { type: String, trim: true, default: '' },
+    remark: { type: String, required: true, trim: true },
+  },
+  { _id: false }
+);
+
 /** Checklist item — assigned user, due date, priority, category */
 const checklistItemSchema = new mongoose.Schema(
   {
@@ -99,8 +128,10 @@ const inquirySchema = new mongoose.Schema(
     },
     // Audit
     createdBy: { type: String, required: true, trim: true },
-    // Air Ticket Form (booking details) — embedded sub-document
+    // Air Ticket Form (booking details) — embedded sub-document (Flight Booking)
     airTicket: { type: airTicketSchema },
+    // Hotel Booking Form (booking details) — embedded sub-document (Hotel Booking)
+    hotelBooking: { type: hotelBookingSchema },
     // Checklist array
     checklist: {
       type: [checklistItemSchema],

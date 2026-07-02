@@ -110,4 +110,171 @@ describe('validateInquiry', () => {
       })
     );
   });
+
+  // ─── Hotel Booking branch ──────────────────────────────────────────────────
+  const hotelBody = {
+    ...validBody,
+    typeOfBooking: 'Hotel Booking',
+    hotelBooking: {
+      city: 'Goa',
+      checkInDate: '2026-08-01T00:00:00.000Z',
+      checkOutDate: '2026-08-05T00:00:00.000Z',
+      rooms: 2,
+      adults: 4,
+      propertyType: ['Resort'],
+      hotelCategory: ['5 Star'],
+      roomViews: ['Sea View', 'Pool View'],
+      amenities: ['Swimming Pool', 'Wifi'],
+      mealPlan: ['Breakfast & Dinner'],
+      transfers: ['Airport Transfers'],
+      budgetMin: '20000',
+      budgetMax: '40000',
+      remark: 'Need connecting rooms',
+    },
+  };
+
+  it('calls next() for a valid Hotel Booking (no airTicket)', () => {
+    const req = { body: { ...hotelBody } };
+    const res = {};
+    const next = jest.fn();
+
+    validateInquiry(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(req.body.hotelBooking.city).toBe('Goa');
+  });
+
+  it('returns 422 when Hotel Booking is missing hotelBooking', () => {
+    const body = { ...hotelBody };
+    delete body.hotelBooking;
+    const req = { body };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    const next = jest.fn();
+
+    validateInquiry(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 when Hotel Booking also carries an airTicket', () => {
+    const req = {
+      body: {
+        ...hotelBody,
+        airTicket: {
+          bookingType: 'ONE_WAY',
+          flightSegments: [
+            {
+              from: { code: 'AMD', city: 'Ahmedabad' },
+              to: { code: 'DXB', city: 'Dubai' },
+              departureDate: '2026-08-01T00:00:00.000Z',
+              travellerCount: 2,
+              travelClass: 'Economy',
+            },
+          ],
+          remark: 'x',
+        },
+      },
+    };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    const next = jest.fn();
+
+    validateInquiry(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 when checkOutDate is before checkInDate', () => {
+    const req = {
+      body: {
+        ...hotelBody,
+        hotelBooking: {
+          ...hotelBody.hotelBooking,
+          checkInDate: '2026-08-05T00:00:00.000Z',
+          checkOutDate: '2026-08-01T00:00:00.000Z',
+        },
+      },
+    };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    const next = jest.fn();
+
+    validateInquiry(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 when budgetMax is less than budgetMin', () => {
+    const req = {
+      body: {
+        ...hotelBody,
+        hotelBooking: { ...hotelBody.hotelBooking, budgetMin: '40000', budgetMax: '20000' },
+      },
+    };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    const next = jest.fn();
+
+    validateInquiry(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 when a hotelBooking list value is not an allowed label', () => {
+    const req = {
+      body: {
+        ...hotelBody,
+        hotelBooking: { ...hotelBody.hotelBooking, propertyType: ['Mansion'] },
+      },
+    };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    const next = jest.fn();
+
+    validateInquiry(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 when Flight Booking carries a hotelBooking', () => {
+    const req = {
+      body: {
+        ...validBody,
+        typeOfBooking: 'Flight Booking',
+        airTicket: {
+          bookingType: 'ONE_WAY',
+          flightSegments: [
+            {
+              from: { code: 'AMD', city: 'Ahmedabad' },
+              to: { code: 'DXB', city: 'Dubai' },
+              departureDate: '2026-08-01T00:00:00.000Z',
+              travellerCount: 2,
+              travelClass: 'Economy',
+            },
+          ],
+          remark: 'x',
+        },
+        hotelBooking: hotelBody.hotelBooking,
+      },
+    };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    const next = jest.fn();
+
+    validateInquiry(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 when Flight Booking is missing airTicket', () => {
+    const req = { body: { ...validBody, typeOfBooking: 'Flight Booking' } };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    const next = jest.fn();
+
+    validateInquiry(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(next).not.toHaveBeenCalled();
+  });
 });

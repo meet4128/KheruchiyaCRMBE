@@ -84,6 +84,87 @@ const options = {
             remark: { type: 'string' },
           },
         },
+        HotelBooking: {
+          type: 'object',
+          required: ['city', 'checkInDate', 'checkOutDate', 'rooms', 'adults', 'remark'],
+          properties: {
+            city: { type: 'string' },
+            checkInDate: { type: 'string', format: 'date-time' },
+            checkOutDate: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Must be on or after checkInDate',
+            },
+            rooms: { type: 'integer', minimum: 1 },
+            adults: { type: 'integer', minimum: 1 },
+            propertyType: {
+              type: 'array',
+              items: {
+                type: 'string',
+                enum: ['Hotel', 'Resort', 'Villa', 'Cottage', 'Homestay', 'Camp', 'Houseboat'],
+              },
+              default: [],
+            },
+            hotelCategory: {
+              type: 'array',
+              items: { type: 'string', enum: ['3 Star', '4 Star', '5 Star'] },
+              default: [],
+            },
+            roomViews: {
+              type: 'array',
+              items: {
+                type: 'string',
+                enum: ['Garden View', 'Sea View', 'City View', 'Pool View', 'River View'],
+              },
+              default: [],
+            },
+            amenities: {
+              type: 'array',
+              items: {
+                type: 'string',
+                enum: [
+                  'Swimming Pool',
+                  'Wifi',
+                  'Spa',
+                  'Restaurant',
+                  'Parking',
+                  'Bonfire',
+                  'Bar',
+                  'Balcony Terrace',
+                  'Kitchen',
+                  'Caretaker',
+                  'Lift',
+                ],
+              },
+              default: [],
+            },
+            mealPlan: {
+              type: 'array',
+              items: {
+                type: 'string',
+                enum: ['Continental Plan', 'Only Breakfast', 'Breakfast & Dinner', 'All Meal'],
+              },
+              default: [],
+            },
+            transfers: {
+              type: 'array',
+              items: {
+                type: 'string',
+                enum: ['Airport Transfers', 'Railway Station Transfer', 'Sight Seeing Transfers'],
+              },
+              default: [],
+            },
+            budgetMin: {
+              type: 'string',
+              description: 'Digits-only string, e.g. "20000". May be empty.',
+            },
+            budgetMax: {
+              type: 'string',
+              description: 'Digits-only string; if both present, budgetMax >= budgetMin.',
+            },
+            remark: { type: 'string' },
+          },
+        },
         ChecklistItem: {
           type: 'object',
           required: ['priority'],
@@ -143,7 +224,14 @@ const options = {
               enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
               default: 'PENDING',
             },
-            airTicket: { $ref: '#/components/schemas/AirTicket' },
+            airTicket: {
+              allOf: [{ $ref: '#/components/schemas/AirTicket' }],
+              description: 'Required when typeOfBooking is "Flight Booking"; omit otherwise.',
+            },
+            hotelBooking: {
+              allOf: [{ $ref: '#/components/schemas/HotelBooking' }],
+              description: 'Required when typeOfBooking is "Hotel Booking"; omit otherwise.',
+            },
             checklist: {
               type: 'array',
               items: { $ref: '#/components/schemas/ChecklistItem' },

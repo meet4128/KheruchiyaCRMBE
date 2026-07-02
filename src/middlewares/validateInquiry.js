@@ -1,6 +1,15 @@
 const Joi = require('joi');
 const { CHECKLIST_PRIORITY_VALUES } = require('../constants/checklistPriority');
 const { INQUIRY_STATUS_VALUES } = require('../constants/inquiryStatus');
+const {
+  HOTEL_PROPERTY_TYPES,
+  HOTEL_CATEGORIES,
+  HOTEL_ROOM_VIEWS,
+  HOTEL_AMENITIES,
+  HOTEL_MEAL_PLANS,
+  HOTEL_TRANSFERS,
+  BOOKING_TYPE,
+} = require('../constants/hotelBooking');
 const { messages } = require('../locales');
 
 const t = messages.validation.inquiry;
@@ -46,7 +55,56 @@ const airTicketSchema = Joi.object({
     .allow('')
     .empty(''),
   remark: Joi.string().required().trim(),
-}).optional(); // Required when present; omit for inquiry-only submissions
+});
+
+// ─── Hotel Booking schema (present only for typeOfBooking = "Hotel Booking") ──
+const budgetString = Joi.string()
+  .allow('')
+  .pattern(/^\d+$/)
+  .messages({ 'string.pattern.base': t.budgetDigitsOnly });
+
+const hotelBookingSchema = Joi.object({
+  city: Joi.string().required().trim(),
+  checkInDate: Joi.date().required(),
+  checkOutDate: Joi.date().min(Joi.ref('checkInDate')).required().messages({
+    'date.min': t.checkOutBeforeCheckIn,
+  }),
+  rooms: Joi.number().integer().min(1).required(),
+  adults: Joi.number().integer().min(1).required(),
+  propertyType: Joi.array()
+    .items(Joi.string().valid(...HOTEL_PROPERTY_TYPES))
+    .optional()
+    .default([]),
+  hotelCategory: Joi.array()
+    .items(Joi.string().valid(...HOTEL_CATEGORIES))
+    .optional()
+    .default([]),
+  roomViews: Joi.array()
+    .items(Joi.string().valid(...HOTEL_ROOM_VIEWS))
+    .optional()
+    .default([]),
+  amenities: Joi.array()
+    .items(Joi.string().valid(...HOTEL_AMENITIES))
+    .optional()
+    .default([]),
+  mealPlan: Joi.array()
+    .items(Joi.string().valid(...HOTEL_MEAL_PLANS))
+    .optional()
+    .default([]),
+  transfers: Joi.array()
+    .items(Joi.string().valid(...HOTEL_TRANSFERS))
+    .optional()
+    .default([]),
+  budgetMin: budgetString.optional(),
+  budgetMax: budgetString.optional(),
+  remark: Joi.string().required().trim(),
+}).custom((value, helpers) => {
+  const { budgetMin, budgetMax } = value;
+  if (budgetMin && budgetMax && Number(budgetMax) < Number(budgetMin)) {
+    return helpers.message(t.budgetMaxLessThanMin);
+  }
+  return value;
+});
 
 const checklistItemSchema = Joi.object({
   user: Joi.string().trim().optional().allow(''),
@@ -105,7 +163,42 @@ const inquiryCreateSchema = Joi.object({
     .valid(...INQUIRY_STATUS_VALUES)
     .optional()
     .default('PENDING'),
-  airTicket: airTicketSchema,
+  // Branch on typeOfBooking: require the matching sub-object, forbid the other.
+  // Any other typeOfBooking value leaves both optional (backward compatible).
+  airTicket: Joi.when('typeOfBooking', {
+    switch: [
+      {
+        is: BOOKING_TYPE.FLIGHT,
+        then: airTicketSchema.required().messages({
+          'any.required': t.airTicketRequired,
+        }),
+      },
+      {
+        is: BOOKING_TYPE.HOTEL,
+        then: Joi.any().forbidden().messages({
+          'any.unknown': t.airTicketForbidden,
+        }),
+      },
+    ],
+    otherwise: airTicketSchema.optional(),
+  }),
+  hotelBooking: Joi.when('typeOfBooking', {
+    switch: [
+      {
+        is: BOOKING_TYPE.HOTEL,
+        then: hotelBookingSchema.required().messages({
+          'any.required': t.hotelBookingRequired,
+        }),
+      },
+      {
+        is: BOOKING_TYPE.FLIGHT,
+        then: Joi.any().forbidden().messages({
+          'any.unknown': t.hotelBookingForbidden,
+        }),
+      },
+    ],
+    otherwise: hotelBookingSchema.optional(),
+  }),
   checklist: Joi.array().items(checklistItemSchema).optional().default([]),
 });
 
