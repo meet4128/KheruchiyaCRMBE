@@ -2,6 +2,7 @@ const express = require('express');
 const inquiryController = require('../controllers/inquiryController');
 const validateInquiry = require('../middlewares/validateInquiry');
 const validateInquiryQuery = require('../middlewares/validateInquiryQuery');
+const validateInquiryPhoneQuery = require('../middlewares/validateInquiryPhoneQuery');
 const authMiddleware = require('../middlewares/authMiddleware');
 
 const router = express.Router();
@@ -17,6 +18,12 @@ router.get(
   '/checklist-priority-defaults',
   authMiddleware,
   inquiryController.getChecklistPriorityDefaults
+);
+router.get(
+  '/by-phone',
+  authMiddleware,
+  validateInquiryPhoneQuery,
+  inquiryController.getInquiriesByPhone
 );
 router.get('/:id', authMiddleware, inquiryController.getInquiryById);
 router.use('/:inquiryId/amendments', amendmentRoutes);

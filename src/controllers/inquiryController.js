@@ -27,6 +27,15 @@ const getInquiries = asyncHandler(async (req, res) => {
   });
 });
 
+const getInquiriesByPhone = asyncHandler(async (req, res) => {
+  const result = await inquiryService.getInquiriesByPhone(req.query);
+
+  res.status(200).json({
+    status: 'success',
+    data: result,
+  });
+});
+
 const getInquiryById = asyncHandler(async (req, res) => {
   const inquiry = await inquiryService.getInquiryById(req.params.id);
 
@@ -48,6 +57,7 @@ const getChecklistPriorityDefaults = asyncHandler(async (req, res) => {
 module.exports = {
   createInquiry,
   getInquiries,
+  getInquiriesByPhone,
   getInquiryById,
   getChecklistPriorityDefaults,
 };

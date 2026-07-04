@@ -33,6 +33,12 @@ module.exports = {
       invalidPageLimit: 'Page and limit must be at least 1',
       limitMax: 'Limit must not exceed 100',
     },
+    inquiryPhoneQuery: {
+      invalidPageLimit: 'Page and limit must be at least 1',
+      limitMax: 'Limit must not exceed 100',
+      numberRequired: 'Phone number is required',
+      numberInvalid: 'Phone number must contain digits only (5–15 digits)',
+    },
     whatsapp: {
       toRequired: 'Recipient phone (to) is required',
       toInvalid: 'Recipient must be E.164 digits only, no + sign (10–15 digits)',
