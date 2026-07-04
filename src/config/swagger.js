@@ -1269,6 +1269,68 @@ const spec = {
         },
       },
     },
+    '/api/v1/inquiries/by-phone': {
+      get: {
+        tags: ['Inquiries'],
+        summary: 'Search inquiries by phone number',
+        description:
+          'Returns a paginated list of inquiries matching `phoneNumber.number`, optionally scoped by `countryCode`. Same response shape as GET /inquiries.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'number',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', pattern: '^\\d{5,15}$', example: '9876543210' },
+            description: 'Phone number, digits only (5–15).',
+          },
+          {
+            name: 'countryCode',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', example: '+91' },
+          },
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 10 } },
+          {
+            name: 'sort',
+            in: 'query',
+            schema: {
+              type: 'string',
+              default: '-createdAt',
+              description: 'Sort field. Prefix with - for descending (e.g. -createdAt, fullName)',
+            },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Matching inquiries',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        items: { type: 'array', items: { type: 'object' } },
+                        page: { type: 'integer' },
+                        limit: { type: 'integer' },
+                        totalItems: { type: 'integer' },
+                        totalPages: { type: 'integer' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Authentication required' },
+          422: { description: 'Validation failed' },
+        },
+      },
+    },
     '/api/v1/inquiries/{id}': {
       get: {
         tags: ['Inquiries'],
