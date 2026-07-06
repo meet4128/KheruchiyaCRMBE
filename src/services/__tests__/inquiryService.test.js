@@ -1,5 +1,4 @@
 const inquiryService = require('../inquiryService');
-const AppError = require('../../utils/AppError');
 
 jest.mock('../../models/Inquiry', () => {
   const chain = {
@@ -37,29 +36,15 @@ describe('inquiryService', () => {
       createdBy: 'user-1',
     };
 
-    it('throws 409 when reference number already exists', async () => {
-      Inquiry.findOne.mockResolvedValue({ _id: 'existing' });
-
-      await expect(inquiryService.createInquiry(validPayload)).rejects.toThrow(AppError);
-      await expect(inquiryService.createInquiry(validPayload)).rejects.toMatchObject({
-        statusCode: 409,
-      });
-
-      expect(Inquiry.findOne).toHaveBeenCalledWith({
-        'referenceNumber.countryCode': '+91',
-        'referenceNumber.number': '1234567890',
-      });
-      expect(Inquiry.create).not.toHaveBeenCalled();
-    });
-
-    it('creates inquiry when reference number is unique', async () => {
-      Inquiry.findOne.mockResolvedValue(null);
+    it('allows duplicate reference numbers (no uniqueness check)', async () => {
       const saved = { _id: 'new-id', ...validPayload };
       Inquiry.create.mockResolvedValue(saved);
 
       const result = await inquiryService.createInquiry(validPayload);
 
       expect(result).toEqual(saved);
+      // Reference number is no longer looked up before creating.
+      expect(Inquiry.findOne).not.toHaveBeenCalled();
       expect(Inquiry.create).toHaveBeenCalledWith(validPayload);
     });
 

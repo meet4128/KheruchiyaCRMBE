@@ -180,9 +180,9 @@ module.exports = {
 
   // ─── Error messages (global, service, model) ─────────────────────────────
   errors: {
-    referenceNumberExists: 'Reference number already exists',
     employeeIdExists: 'Employee ID already exists',
     personalEmailExists: 'Personal email is already in use',
+    duplicateValue: 'A record with the same value already exists',
     memberNotFound: 'Member not found',
     purchaseTeamMemberNotFound: 'Purchase team member not found',
     purchaseChatThreadNotFound: 'Purchase team chat thread not found',

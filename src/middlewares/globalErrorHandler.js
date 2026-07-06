@@ -43,7 +43,7 @@ const globalErrorHandler = (err, req, res, _next) => {
     } else if (Object.prototype.hasOwnProperty.call(kv, 'personalEmail')) {
       error.message = messages.errors.personalEmailExists;
     } else {
-      error.message = messages.errors.referenceNumberExists;
+      error.message = messages.errors.duplicateValue;
     }
   }
 

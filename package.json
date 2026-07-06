@@ -14,6 +14,7 @@
     "format:check": "prettier --check \"src/**/*.js\" \"*.js\"",
     "seed:admin": "node scripts/seedAdmin.js",
     "seed:member": "node scripts/seedMember.js",
+    "migrate:drop-reference-index": "node scripts/dropReferenceNumberIndex.js",
     "prepare": "husky",
     "commit": "cz"
   },

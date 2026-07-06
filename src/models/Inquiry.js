@@ -148,11 +148,8 @@ const inquirySchema = new mongoose.Schema(
 /** Email: lookup / search by contact */
 inquirySchema.index({ email: 1 }, { sparse: true });
 
-/** Reference number: compound unique for duplicate detection & fast lookups */
-inquirySchema.index(
-  { 'referenceNumber.countryCode': 1, 'referenceNumber.number': 1 },
-  { unique: true }
-);
+/** Reference number: compound index for fast lookups (NOT unique — duplicates allowed) */
+inquirySchema.index({ 'referenceNumber.countryCode': 1, 'referenceNumber.number': 1 });
 
 /** Status: for filter performance on GET /inquiries */
 inquirySchema.index({ status: 1 });

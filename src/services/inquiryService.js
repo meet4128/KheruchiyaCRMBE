@@ -18,17 +18,9 @@ const ALLOWED_SORT_FIELDS = [
 ];
 
 const createInquiry = async (payload) => {
-  const { referenceNumber } = payload;
-
-  const existing = await Inquiry.findOne({
-    'referenceNumber.countryCode': referenceNumber.countryCode,
-    'referenceNumber.number': referenceNumber.number,
-  });
-
-  if (existing) {
-    throw new AppError(messages.errors.referenceNumberExists, 409);
-  }
-
+  // Reference number and phone number are intentionally NOT unique: the same
+  // client (ref/phone) may raise multiple inquiries across hotel and air ticket
+  // bookings, so duplicates are allowed.
   const payloadWithDueDates = {
     ...payload,
     checklist: applyChecklistDueDates(payload.checklist),

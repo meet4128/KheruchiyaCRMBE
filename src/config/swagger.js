@@ -1174,7 +1174,6 @@ const spec = {
             },
           },
           401: { description: 'Authentication required' },
-          409: { description: 'Reference number already exists' },
           422: { description: 'Validation failed' },
         },
       },
