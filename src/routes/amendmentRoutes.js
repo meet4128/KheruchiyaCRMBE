@@ -4,7 +4,9 @@ const requireRoles = require('../middlewares/requireRoles');
 const validateAmendmentFinalize = require('../middlewares/validateAmendmentFinalize');
 const validateAmendmentNote = require('../middlewares/validateAmendmentNote');
 const validateAmendmentMessagesQuery = require('../middlewares/validateAmendmentMessagesQuery');
+const { validateReminderCreate } = require('../middlewares/validateReminder');
 const amendmentController = require('../controllers/amendmentController');
+const reminderController = require('../controllers/reminderController');
 const { uploadAmendmentSessionFile } = require('../middlewares/uploadAmendmentSessionFile');
 
 const router = express.Router({ mergeParams: true });
@@ -45,6 +47,15 @@ router.get(
   amendmentController.getAmendmentMessages
 );
 router.get('/:amendmentId/notes', ...salesOrAdmin, amendmentController.getAmendmentNotes);
+
+// Follow-up reminder (calendar event) for a finalized amendment
+router.post(
+  '/:amendmentId/reminders',
+  ...salesOrAdmin,
+  validateReminderCreate,
+  reminderController.createReminder
+);
+
 router.get('/:amendmentId', ...salesOrAdmin, amendmentController.getAmendment);
 
 module.exports = router;

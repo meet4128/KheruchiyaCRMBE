@@ -484,6 +484,64 @@ const options = {
             createdAt: { type: 'string', format: 'date-time' },
           },
         },
+        Reminder: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string', example: '507f1f77bcf86cd799439011' },
+            inquiryId: { type: 'string' },
+            amendmentId: { type: 'string', example: 'TAIR59733107042' },
+            sessionId: { type: 'string', nullable: true },
+            note: { type: 'string', example: 'Call client to confirm re-issue' },
+            remindAt: { type: 'string', format: 'date-time', example: '2026-07-10T15:30:00.000Z' },
+            recurrenceRule: {
+              type: 'string',
+              example: 'FREQ=WEEKLY;BYDAY=MO;COUNT=5',
+              description: 'RFC 5545 RRULE; empty string = single occurrence',
+            },
+            agent: {
+              oneOf: [{ type: 'string' }, { $ref: '#/components/schemas/MemberRef' }],
+              description: 'Member id, or populated member on reads',
+            },
+            inLoopUsers: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/MemberRef' },
+            },
+            priority: { type: 'string', enum: ['HIGH', 'MEDIUM', 'LOW'] },
+            status: {
+              type: 'string',
+              enum: ['pending', 'completed', 'dismissed', 'snoozed'],
+            },
+            createdBy: { type: 'string' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        MemberRef: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            fullName: { type: 'string' },
+            firstName: { type: 'string' },
+            lastName: { type: 'string' },
+            personalEmail: { type: 'string' },
+          },
+        },
+        CalendarEvent: {
+          allOf: [
+            { $ref: '#/components/schemas/Reminder' },
+            {
+              type: 'object',
+              properties: {
+                reminderId: { type: 'string' },
+                occurrenceAt: {
+                  type: 'string',
+                  format: 'date-time',
+                  description: 'The specific occurrence time within the queried range',
+                },
+              },
+            },
+          ],
+        },
         AmendmentMessage: {
           type: 'object',
           properties: {
@@ -798,15 +856,276 @@ const options = {
         name: 'WhatsApp',
         description: 'WhatsApp Cloud API webhook, conversations, messages, and agent send',
       },
+      {
+        name: 'Reminders',
+        description:
+          'Follow-up reminders created from the Manage Amendment follow-up dialog (sales/admin).',
+      },
+      {
+        name: 'Calendar',
+        description: 'Calendar read — reminder occurrences expanded within a date range.',
+      },
     ],
   },
   apis: [], // We define paths inline below
 };
 
 // Inline paths since we're not using JSDoc
+const okReminder = {
+  description: 'Reminder',
+  content: {
+    'application/json': {
+      schema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', example: 'success' },
+          data: {
+            type: 'object',
+            properties: { reminder: { $ref: '#/components/schemas/Reminder' } },
+          },
+        },
+      },
+    },
+  },
+};
+
 const spec = {
   ...options.definition,
   paths: {
+    '/api/v1/inquiries/{inquiryId}/amendments/{amendmentId}/reminders': {
+      post: {
+        tags: ['Reminders'],
+        summary: 'Create a follow-up reminder for an amendment',
+        description:
+          '**Sales or admin.** Called by the follow-up dialog after the amendment is finalized with action `put_follow_up`. Persists the reminder schedule (remindAt, agent, in-loop users, priority, recurrence, note).',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'inquiryId', in: 'path', required: true, schema: { type: 'string' } },
+          {
+            name: 'amendmentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', example: 'TAIR59733107042' },
+            description: 'Amendment business id.',
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['remindAt', 'agent', 'priority'],
+                properties: {
+                  remindAt: {
+                    type: 'string',
+                    format: 'date-time',
+                    example: '2026-07-10T15:30:00+05:30',
+                    description: 'ISO 8601 with offset; combined reminder date + time.',
+                  },
+                  agent: { type: 'string', description: 'Member id of the assigned agent.' },
+                  priority: { type: 'string', enum: ['HIGH', 'MEDIUM', 'LOW'] },
+                  note: { type: 'string', maxLength: 2000 },
+                  recurrenceRule: {
+                    type: 'string',
+                    example: 'FREQ=WEEKLY;BYDAY=MO;COUNT=5',
+                    description: 'RFC 5545 RRULE; omit or empty for a single reminder.',
+                  },
+                  inLoopUsers: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Member ids kept in the loop.',
+                  },
+                  sessionId: { type: 'string', minLength: 8, maxLength: 64 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: okReminder,
+          401: { description: 'Authentication required' },
+          403: { description: 'Insufficient role (sales or admin required)' },
+          404: { description: 'Inquiry or amendment not found' },
+          422: { description: 'Validation failed (bad member id, RRULE, or missing field)' },
+        },
+      },
+    },
+    '/api/v1/reminders/{id}': {
+      get: {
+        tags: ['Reminders'],
+        summary: 'Get a reminder by id',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          200: okReminder,
+          401: { description: 'Authentication required' },
+          404: { description: 'Reminder not found' },
+        },
+      },
+      patch: {
+        tags: ['Reminders'],
+        summary: 'Update / reschedule a reminder',
+        description: 'Partial update — send only changed fields (at least one required).',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                minProperties: 1,
+                properties: {
+                  remindAt: { type: 'string', format: 'date-time' },
+                  agent: { type: 'string' },
+                  priority: { type: 'string', enum: ['HIGH', 'MEDIUM', 'LOW'] },
+                  note: { type: 'string', maxLength: 2000 },
+                  recurrenceRule: { type: 'string' },
+                  inLoopUsers: { type: 'array', items: { type: 'string' } },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: okReminder,
+          401: { description: 'Authentication required' },
+          404: { description: 'Reminder not found' },
+          422: { description: 'Validation failed' },
+        },
+      },
+      delete: {
+        tags: ['Reminders'],
+        summary: 'Delete a reminder',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          200: {
+            description: 'Deleted',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: { id: { type: 'string' } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Authentication required' },
+          404: { description: 'Reminder not found' },
+        },
+      },
+    },
+    '/api/v1/reminders/{id}/status': {
+      patch: {
+        tags: ['Reminders'],
+        summary: 'Update reminder status (complete / dismiss / snooze)',
+        description: 'When status is `snoozed`, an optional `remindAt` reschedules the reminder.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['status'],
+                properties: {
+                  status: {
+                    type: 'string',
+                    enum: ['pending', 'completed', 'dismissed', 'snoozed'],
+                  },
+                  remindAt: {
+                    type: 'string',
+                    format: 'date-time',
+                    description: 'New time when snoozing.',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: okReminder,
+          401: { description: 'Authentication required' },
+          404: { description: 'Reminder not found' },
+          422: { description: 'Validation failed' },
+        },
+      },
+    },
+    '/api/v1/calendar/events': {
+      get: {
+        tags: ['Calendar'],
+        summary: 'List calendar events (reminder occurrences) in a date range',
+        description:
+          '**Sales or admin.** Returns reminder occurrences expanded within `[from, to]` (recurring reminders yield one event per occurrence). Range is capped at 92 days.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'from',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', format: 'date-time', example: '2026-07-01T00:00:00Z' },
+          },
+          {
+            name: 'to',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', format: 'date-time', example: '2026-07-31T23:59:59Z' },
+          },
+          {
+            name: 'agent',
+            in: 'query',
+            required: false,
+            schema: { type: 'string' },
+            description: 'Filter by assigned member id.',
+          },
+          {
+            name: 'status',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', enum: ['pending', 'completed', 'dismissed', 'snoozed'] },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Calendar events in range',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        items: {
+                          type: 'array',
+                          items: { $ref: '#/components/schemas/CalendarEvent' },
+                        },
+                        from: { type: 'string', format: 'date-time' },
+                        to: { type: 'string', format: 'date-time' },
+                        totalItems: { type: 'integer' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Authentication required' },
+          403: { description: 'Insufficient role (sales or admin required)' },
+          422: { description: 'Validation failed (missing/invalid dates or range > 92 days)' },
+        },
+      },
+    },
     '/webhooks/whatsapp': {
       get: {
         tags: ['WhatsApp'],
