@@ -1330,6 +1330,111 @@ const spec = {
         },
       },
     },
+    '/api/v1/amendments/search': {
+      get: {
+        tags: ['Amendments'],
+        summary: 'Search amendments (Manage Amendment screen)',
+        description:
+          'Returns a paginated list of amendments across all inquiries. All filters are optional and combined with AND. Only fields stored on the Amendment model are filterable; UI fields not modeled (Journey/Fare/Channel Type, Booking ID, etc.) are not supported.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'amendmentId',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', example: 'TAIR12345' },
+            description: 'Partial, case-insensitive match on amendment id.',
+          },
+          {
+            name: 'amendmentType',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', enum: ['re_issue', 'cancelation', 'booking'] },
+          },
+          {
+            name: 'status',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', enum: ['followup', 'pending', 'loss', 'completed'] },
+          },
+          {
+            name: 'processedFrom',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', format: 'date-time' },
+            description: 'Filter processedAt >= this ISO date.',
+          },
+          {
+            name: 'processedTo',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', format: 'date-time' },
+            description: 'Filter processedAt <= this ISO date.',
+          },
+          {
+            name: 'createdFrom',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', format: 'date-time' },
+            description: 'Filter createdAt (Generated Time) >= this ISO date.',
+          },
+          {
+            name: 'createdTo',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', format: 'date-time' },
+            description: 'Filter createdAt (Generated Time) <= this ISO date.',
+          },
+          {
+            name: 'search',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', example: 'TAIR' },
+            description: 'General text search over amendment id (fallback for amendmentId).',
+          },
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 10 } },
+          {
+            name: 'sort',
+            in: 'query',
+            schema: {
+              type: 'string',
+              default: '-createdAt',
+              description:
+                'Sort field. Prefix with - for descending (e.g. -createdAt, -processedAt, amendmentId).',
+            },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Matching amendments',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        items: { type: 'array', items: { $ref: '#/components/schemas/Amendment' } },
+                        page: { type: 'integer' },
+                        limit: { type: 'integer' },
+                        totalItems: { type: 'integer' },
+                        totalPages: { type: 'integer' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Authentication required' },
+          403: { description: 'Insufficient role (sales or admin required)' },
+          422: { description: 'Validation failed' },
+        },
+      },
+    },
     '/api/v1/inquiries/{id}': {
       get: {
         tags: ['Inquiries'],

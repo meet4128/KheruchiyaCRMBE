@@ -39,6 +39,13 @@ module.exports = {
       numberRequired: 'Phone number is required',
       numberInvalid: 'Phone number must contain digits only (5–15 digits)',
     },
+    amendmentSearchQuery: {
+      invalidPageLimit: 'Page and limit must be at least 1',
+      limitMax: 'Limit must not exceed 100',
+      invalidDate: 'Date must be a valid ISO date',
+      invalidDateRange: 'End date must be on or after the start date',
+      invalidEnum: 'Invalid value for the selected filter',
+    },
     whatsapp: {
       toRequired: 'Recipient phone (to) is required',
       toInvalid: 'Recipient must be E.164 digits only, no + sign (10–15 digits)',

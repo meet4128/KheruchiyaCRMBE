@@ -6,6 +6,7 @@ const swaggerUi = require('swagger-ui-express');
 const rateLimit = require('express-rate-limit');
 const swaggerSpec = require('./config/swagger');
 const inquiryRoutes = require('./routes/inquiryRoutes');
+const amendmentSearchRoutes = require('./routes/amendmentSearchRoutes');
 const authRoutes = require('./routes/authRoutes');
 const healthRoutes = require('./routes/healthRoutes');
 const whatsappWebhookRoutes = require('./routes/whatsappWebhookRoutes');
@@ -151,6 +152,7 @@ app.use(
 app.use('/api/v1/health', healthRoutes);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/inquiries', inquiryRoutes);
+app.use('/api/v1/amendments', amendmentSearchRoutes);
 app.use('/api/v1/members', memberRoutes);
 app.use('/api/v1/whatsapp', whatsappRoutes);
 

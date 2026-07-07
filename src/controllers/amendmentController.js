@@ -12,6 +12,15 @@ const finalizeAmendment = asyncHandler(async (req, res) => {
   });
 });
 
+const searchAmendments = asyncHandler(async (req, res) => {
+  const result = await amendmentService.searchAmendments(req.query);
+
+  res.status(200).json({
+    status: 'success',
+    data: result,
+  });
+});
+
 const listAmendments = asyncHandler(async (req, res) => {
   const { inquiryId } = req.params;
   const amendments = await amendmentService.listAmendmentsByInquiry(inquiryId);
@@ -104,6 +113,7 @@ const addSessionNote = asyncHandler(async (req, res) => {
 
 module.exports = {
   finalizeAmendment,
+  searchAmendments,
   listAmendments,
   getAmendment,
   getAmendmentMessages,

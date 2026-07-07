@@ -10,6 +10,17 @@ const generateAmendmentId = require('../utils/generateAmendmentId');
 const AppError = require('../utils/AppError');
 const { messages } = require('../locales');
 
+/** Allowed sort fields to prevent query injection on amendment search */
+const AMENDMENT_SORT_FIELDS = [
+  'createdAt',
+  'updatedAt',
+  'processedAt',
+  'amendmentId',
+  'amendmentType',
+  'status',
+  'amountCharged',
+];
+
 const assertValidObjectId = (id, message) => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw new AppError(message || messages.errors.invalidIdOrFormat, 400);
@@ -238,8 +249,92 @@ const saveSessionMessage = async (messageFields) => {
   return doc.toObject();
 };
 
+/**
+ * Searches amendments across all inquiries with optional filters, pagination and sorting.
+ * Only fields that exist on the Amendment model are supported; unmodeled UI fields
+ * (Journey/Fare/Channel Type, Booking ID, etc.) are intentionally not filterable.
+ *
+ * @param {Object} queryParams - Validated query params from req.query
+ * @returns {Promise<{ items: any[], page: number, limit: number, totalItems: number, totalPages: number }>}
+ */
+const searchAmendments = async (queryParams = {}) => {
+  const {
+    page = 1,
+    limit = 10,
+    amendmentId,
+    amendmentType,
+    status,
+    processedFrom,
+    processedTo,
+    createdFrom,
+    createdTo,
+    search,
+    sort = '-createdAt',
+  } = queryParams;
+
+  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+  const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
+  const skip = (pageNum - 1) * limitNum;
+
+  // Sanitize sort: allowlist to prevent query injection
+  const rawSort = String(sort || '').trim();
+  const direction = rawSort.startsWith('-') ? -1 : 1;
+  const field = rawSort.replace(/^-/, '').trim() || 'createdAt';
+  const safeSort = AMENDMENT_SORT_FIELDS.includes(field)
+    ? { [field]: direction }
+    : { createdAt: -1 };
+
+  const filter = {};
+
+  if (amendmentType) {
+    filter.amendmentType = amendmentType;
+  }
+
+  if (status) {
+    filter.status = status;
+  }
+
+  // amendmentId: partial, case-insensitive match (escape regex chars to prevent ReDoS)
+  const idTerm = amendmentId || search;
+  if (idTerm) {
+    const sanitized = String(idTerm)
+      .slice(0, 100)
+      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    filter.amendmentId = new RegExp(sanitized, 'i');
+  }
+
+  // processedAt range
+  if (processedFrom || processedTo) {
+    filter.processedAt = {};
+    if (processedFrom) filter.processedAt.$gte = new Date(processedFrom);
+    if (processedTo) filter.processedAt.$lte = new Date(processedTo);
+  }
+
+  // createdAt range (the "Generated Time" / From–To Date column)
+  if (createdFrom || createdTo) {
+    filter.createdAt = {};
+    if (createdFrom) filter.createdAt.$gte = new Date(createdFrom);
+    if (createdTo) filter.createdAt.$lte = new Date(createdTo);
+  }
+
+  const query = Amendment.find(filter).skip(skip).limit(limitNum).sort(safeSort).lean();
+
+  const [items, totalItems] = await Promise.all([query.exec(), Amendment.countDocuments(filter)]);
+
+  const totalPages = Math.ceil(totalItems / limitNum) || 1;
+
+  return {
+    items,
+    page: pageNum,
+    limit: limitNum,
+    totalItems,
+    totalPages,
+  };
+};
+
 module.exports = {
   finalizeAmendment,
+  searchAmendments,
   listAmendmentsByInquiry,
   getAmendment,
   getAmendmentMessages,
