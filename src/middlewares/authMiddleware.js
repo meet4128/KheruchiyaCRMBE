@@ -21,10 +21,16 @@ const authMiddleware = (req, res, next) => {
     const decoded = verifyAccessToken(token);
     req.user = decoded;
     next();
-  } catch (_err) {
+  } catch (err) {
+    // Expired access token → session is over; surface a distinct code so the
+    // client can log the user out. Any other verify failure is a plain invalid token.
+    const expired = err && err.name === 'TokenExpiredError';
     return res.status(401).json({
       status: 'fail',
-      data: { message: messages.auth.invalidOrExpiredToken },
+      data: {
+        message: expired ? messages.auth.sessionExpired : messages.auth.invalidOrExpiredToken,
+        code: expired ? 'SESSION_EXPIRED' : 'INVALID_TOKEN',
+      },
     });
   }
 };

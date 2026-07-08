@@ -71,14 +71,19 @@ async function realLogin(req, res, { email, password }) {
   }
 
   const role = deriveRoleFromMember(member);
+  // Absolute session deadline: the client must re-authenticate 15 min after login.
+  // Both tokens carry it and expire at it, and refresh-token refuses to extend past it.
+  const expiresIn = getAccessTokenExpiresInSeconds();
+  const sessionExp = Math.floor(Date.now() / 1000) + expiresIn;
   const userPayload = {
     id: String(member._id),
     email: member.personalEmail,
     role,
     tokenVersion: member.tokenVersion || 0,
+    sessionExp,
   };
   const accessToken = signAccessToken(userPayload);
-  const refreshToken = signRefreshToken(userPayload);
+  const refreshToken = signRefreshToken(userPayload, { expiresIn });
 
   member.lastLoginAt = new Date();
   await member.save();
@@ -90,7 +95,7 @@ async function realLogin(req, res, { email, password }) {
     data: {
       accessToken,
       refreshToken,
-      expiresIn: getAccessTokenExpiresInSeconds(),
+      expiresIn,
       user: {
         id: userPayload.id,
         email: userPayload.email,
@@ -186,6 +191,17 @@ const refreshToken = asyncHandler(async (req, res) => {
     });
   }
 
+  // Absolute 15-min session window — a refresh token may rotate the access token
+  // but never extend the session past the original login deadline. Past it → re-login.
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (typeof decoded.sessionExp === 'number' && nowSec >= decoded.sessionExp) {
+    log.warn(`refresh.rejected reason=sessionExpired`);
+    return res.status(401).json({
+      status: 'fail',
+      data: { message: messages.auth.sessionExpired, code: 'SESSION_EXPIRED' },
+    });
+  }
+
   // tokenVersion check — only applies to real members (id is a Mongo ObjectId AND payload has tokenVersion)
   const idIsObjectId =
     typeof decoded.id === 'string' && mongoose.Types.ObjectId.isValid(decoded.id);
@@ -216,15 +232,26 @@ const refreshToken = asyncHandler(async (req, res) => {
     userPayload.tokenVersion = decoded.tokenVersion;
   }
 
-  const accessToken = signAccessToken(userPayload);
-  const newRefreshToken = signRefreshToken(userPayload);
+  // Carry the original session deadline forward and cap the rotated tokens to the
+  // time remaining in it, so the 15-min window is absolute and cannot slide.
+  const remaining =
+    typeof decoded.sessionExp === 'number'
+      ? Math.max(1, decoded.sessionExp - nowSec)
+      : getAccessTokenExpiresInSeconds();
+  if (typeof decoded.sessionExp === 'number') {
+    userPayload.sessionExp = decoded.sessionExp;
+  }
+  const tokenOptions = { expiresIn: remaining };
+
+  const accessToken = signAccessToken(userPayload, tokenOptions);
+  const newRefreshToken = signRefreshToken(userPayload, tokenOptions);
 
   res.status(200).json({
     status: 'success',
     data: {
       accessToken,
       refreshToken: newRefreshToken,
-      expiresIn: getAccessTokenExpiresInSeconds(),
+      expiresIn: remaining,
       user: userPayload,
     },
   });

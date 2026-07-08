@@ -187,6 +187,7 @@ module.exports = {
   auth: {
     authenticationRequired: 'Authentication required',
     invalidOrExpiredToken: 'Invalid or expired token',
+    sessionExpired: 'Your session has expired. Please log in again.',
     refreshTokenRequired: 'Refresh token is required',
     invalidRole: 'Role must be one of: admin, sales, purchase, account, user',
     invalidRefreshToken: 'Invalid refresh token',
