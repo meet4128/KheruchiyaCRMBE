@@ -8,6 +8,7 @@ const {
   signAccessToken,
   signRefreshToken,
   getAccessTokenExpiresInSeconds,
+  getRefreshTokenExpiresInSeconds,
 } = require('../utils/jwtUtils');
 const { messages } = require('../locales');
 const { log } = require('../utils/logger');
@@ -71,10 +72,13 @@ async function realLogin(req, res, { email, password }) {
   }
 
   const role = deriveRoleFromMember(member);
-  // Absolute session deadline: the client must re-authenticate 15 min after login.
-  // Both tokens carry it and expire at it, and refresh-token refuses to extend past it.
+  // Absolute session deadline: the client may rotate access tokens until the
+  // refresh token expires (default 7d), then must re-authenticate. Both tokens
+  // carry the deadline and refresh-token refuses to extend past it. `expiresIn`
+  // is the short-lived access-token lifetime (15 min), used by the client to
+  // know when to refresh.
   const expiresIn = getAccessTokenExpiresInSeconds();
-  const sessionExp = Math.floor(Date.now() / 1000) + expiresIn;
+  const sessionExp = Math.floor(Date.now() / 1000) + getRefreshTokenExpiresInSeconds();
   const userPayload = {
     id: String(member._id),
     email: member.personalEmail,
@@ -83,7 +87,7 @@ async function realLogin(req, res, { email, password }) {
     sessionExp,
   };
   const accessToken = signAccessToken(userPayload);
-  const refreshToken = signRefreshToken(userPayload, { expiresIn });
+  const refreshToken = signRefreshToken(userPayload);
 
   member.lastLoginAt = new Date();
   await member.save();
@@ -232,26 +236,28 @@ const refreshToken = asyncHandler(async (req, res) => {
     userPayload.tokenVersion = decoded.tokenVersion;
   }
 
-  // Carry the original session deadline forward and cap the rotated tokens to the
-  // time remaining in it, so the 15-min window is absolute and cannot slide.
+  // Carry the original session deadline forward. The rotated refresh token is
+  // capped to the time remaining in the session (never slides past it), and the
+  // new access token stays short-lived — min(15 min, remaining) — so it is never
+  // longer than the session that outlives it.
   const remaining =
     typeof decoded.sessionExp === 'number'
       ? Math.max(1, decoded.sessionExp - nowSec)
-      : getAccessTokenExpiresInSeconds();
+      : getRefreshTokenExpiresInSeconds();
   if (typeof decoded.sessionExp === 'number') {
     userPayload.sessionExp = decoded.sessionExp;
   }
-  const tokenOptions = { expiresIn: remaining };
+  const accessExpiresIn = Math.min(getAccessTokenExpiresInSeconds(), remaining);
 
-  const accessToken = signAccessToken(userPayload, tokenOptions);
-  const newRefreshToken = signRefreshToken(userPayload, tokenOptions);
+  const accessToken = signAccessToken(userPayload, { expiresIn: accessExpiresIn });
+  const newRefreshToken = signRefreshToken(userPayload, { expiresIn: remaining });
 
   res.status(200).json({
     status: 'success',
     data: {
       accessToken,
       refreshToken: newRefreshToken,
-      expiresIn: remaining,
+      expiresIn: accessExpiresIn,
       user: userPayload,
     },
   });

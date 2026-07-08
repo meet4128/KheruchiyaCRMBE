@@ -36,8 +36,12 @@ const ACCESS_TOKEN_EXPIRES_IN_SECONDS = Math.min(
   parseExpiryToSeconds(JWT_ACCESS_EXPIRES_IN),
   ACCESS_TOKEN_MAX_SECONDS
 );
-// Refresh token: long-lived, used only to get new access tokens (default 7d)
-const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+// Refresh token: long-lived, used only to get new access tokens (default 7d).
+// This also defines the absolute session window — the client may rotate access
+// tokens for this long before having to log in again.
+const REFRESH_TOKEN_DEFAULT = '7d';
+const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || REFRESH_TOKEN_DEFAULT;
+const REFRESH_TOKEN_EXPIRES_IN_SECONDS = parseExpiryToSeconds(JWT_REFRESH_EXPIRES_IN);
 
 const signToken = (payload, options = {}) =>
   jwt.sign(payload, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS, ...options });
@@ -60,6 +64,9 @@ const verifyRefreshToken = (token) => jwt.verify(token, JWT_REFRESH_SECRET);
 /** Access token expiry in seconds (for API response) — the 15-min-capped value */
 const getAccessTokenExpiresInSeconds = () => ACCESS_TOKEN_EXPIRES_IN_SECONDS;
 
+/** Refresh token expiry in seconds — also the absolute session window (default 7d) */
+const getRefreshTokenExpiresInSeconds = () => REFRESH_TOKEN_EXPIRES_IN_SECONDS;
+
 module.exports = {
   signToken,
   signAccessToken,
@@ -68,5 +75,7 @@ module.exports = {
   verifyAccessToken,
   verifyRefreshToken,
   JWT_ACCESS_EXPIRES_IN,
+  JWT_REFRESH_EXPIRES_IN,
   getAccessTokenExpiresInSeconds,
+  getRefreshTokenExpiresInSeconds,
 };
