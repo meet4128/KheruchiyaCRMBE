@@ -363,6 +363,36 @@ const getMembersDirectory = async (queryParams = {}) => {
   };
 };
 
+const NAME_SEARCH_SELECT = '_id fullName firstName lastName employeeId';
+
+/**
+ * Lightweight name lookup for pickers / autocomplete. Matches the search term against
+ * name and employeeId, returning only identity fields (no PII or document URLs).
+ * @param {{ search: string, employmentStatus?: string, limit?: number }} queryParams
+ */
+const searchMemberNames = async (queryParams = {}) => {
+  const { search, employmentStatus, limit = 10 } = queryParams;
+
+  const limitNum = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 25);
+
+  const filter = {};
+  if (employmentStatus) {
+    filter.employmentStatus = employmentStatus;
+  }
+  if (search) {
+    const re = new RegExp(escapeRegex(search), 'i');
+    filter.$or = [{ fullName: re }, { firstName: re }, { lastName: re }, { employeeId: re }];
+  }
+
+  const items = await Member.find(filter)
+    .select(NAME_SEARCH_SELECT)
+    .limit(limitNum)
+    .sort({ fullName: 1 })
+    .lean();
+
+  return { items };
+};
+
 module.exports = {
   createMember,
   updateMember,
@@ -371,4 +401,5 @@ module.exports = {
   getMemberById,
   getMembers,
   getMembersDirectory,
+  searchMemberNames,
 };

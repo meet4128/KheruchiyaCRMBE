@@ -4,6 +4,7 @@ const validateMember = require('../middlewares/validateMember');
 const validateMemberUpdate = require('../middlewares/validateMemberUpdate');
 const validateMemberQuery = require('../middlewares/validateMemberQuery');
 const validateMemberDirectoryQuery = require('../middlewares/validateMemberDirectoryQuery');
+const validateMemberNameSearchQuery = require('../middlewares/validateMemberNameSearchQuery');
 const authMiddleware = require('../middlewares/authMiddleware');
 const requireRoles = require('../middlewares/requireRoles');
 const { uploadMemberDocuments } = require('../middlewares/uploadMemberDocuments');
@@ -47,6 +48,13 @@ router.get(
   requireRoles('sales', 'admin'),
   validateMemberDirectoryQuery,
   memberController.getMembersDirectory
+);
+router.get(
+  '/name-search',
+  authMiddleware,
+  requireRoles('sales', 'admin'),
+  validateMemberNameSearchQuery,
+  memberController.searchMemberNames
 );
 router.get('/:id', authMiddleware, requireRoles('admin'), memberController.getMember);
 router.get(

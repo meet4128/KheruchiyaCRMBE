@@ -128,6 +128,10 @@ module.exports = {
     memberDirectory: {
       departmentRequired: 'Department is required (e.g. Purchase)',
     },
+    memberNameSearch: {
+      searchRequired: 'Search term is required',
+      limitMax: 'Limit must not exceed 25',
+    },
     amendment: {
       actionRequired: 'Action is required',
       actionInvalid: 'Action must be put_follow_up, mark_pending, mark_loss, or mark_won',
