@@ -51,7 +51,7 @@ describe('validateInquiry', () => {
     const req = {
       body: {
         ...validBody,
-        checklist: [{ user: { _id: 'agent-1', fullName: 'Priya Shah' }, category: 'Docs' }],
+        checklist: [{ user: [{ _id: 'agent-1', fullName: 'Priya Shah' }], category: 'Docs' }],
       },
     };
     const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
@@ -86,13 +86,15 @@ describe('validateInquiry', () => {
         checklist: [
           {
             priority: 'HIGH',
-            user: {
-              _id: 'agent-1',
-              fullName: 'Priya Shah',
-              firstName: 'Priya',
-              lastName: 'Shah',
-              employeeId: 'EMP-1001',
-            },
+            user: [
+              {
+                _id: 'agent-1',
+                fullName: 'Priya Shah',
+                firstName: 'Priya',
+                lastName: 'Shah',
+                employeeId: 'EMP-1001',
+              },
+            ],
           },
         ],
       },

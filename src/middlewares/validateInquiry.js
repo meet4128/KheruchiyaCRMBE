@@ -116,7 +116,7 @@ const checklistUserSchema = Joi.object({
 });
 
 const checklistItemSchema = Joi.object({
-  user: checklistUserSchema.optional(),
+  user: Joi.array().items(checklistUserSchema).optional().default([]),
   dueDate: Joi.date().optional().allow('').empty(''),
   priority: Joi.string()
     .valid(...CHECKLIST_PRIORITY_VALUES)

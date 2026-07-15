@@ -100,10 +100,10 @@ const checklistUserSchema = new mongoose.Schema(
   { _id: false }
 );
 
-/** Checklist item — assigned user, due date, priority, category */
+/** Checklist item — assigned users, due date, priority, category */
 const checklistItemSchema = new mongoose.Schema(
   {
-    user: { type: checklistUserSchema, default: undefined },
+    user: { type: [checklistUserSchema], default: [] },
     dueDate: { type: Date, set: (v) => (v === '' || v === null ? undefined : v) },
     priority: {
       type: String,
