@@ -64,7 +64,7 @@ module.exports = {
       priorityRequired: 'Priority is required',
       priorityInvalid: 'Priority must be HIGH, MEDIUM, or LOW',
       statusRequired: 'Status is required',
-      statusInvalid: 'Status must be pending, completed, dismissed, or snoozed',
+      statusInvalid: 'Status must be PENDING, IN_PROGRESS, FOLLOWUP, COMPLETED, or CANCELLED',
       memberNotFound: 'One or more referenced members do not exist',
       updateEmpty: 'Provide at least one field to update',
     },

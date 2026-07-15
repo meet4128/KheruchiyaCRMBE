@@ -17,6 +17,7 @@
     "migrate:drop-reference-index": "node scripts/dropReferenceNumberIndex.js",
     "migrate:checklist-user-object": "node scripts/migrateChecklistUserToObject.js",
     "migrate:checklist-user-array": "node scripts/migrateChecklistUserToArray.js",
+    "migrate:reminder-status": "node scripts/migrateReminderStatus.js",
     "prepare": "husky",
     "commit": "cz"
   },

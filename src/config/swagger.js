@@ -536,7 +536,7 @@ const options = {
             priority: { type: 'string', enum: ['HIGH', 'MEDIUM', 'LOW'] },
             status: {
               type: 'string',
-              enum: ['pending', 'completed', 'dismissed', 'snoozed'],
+              enum: ['PENDING', 'IN_PROGRESS', 'FOLLOWUP', 'COMPLETED', 'CANCELLED'],
             },
             createdBy: { type: 'string' },
             createdAt: { type: 'string', format: 'date-time' },
@@ -1063,8 +1063,9 @@ const spec = {
     '/api/v1/reminders/{id}/status': {
       patch: {
         tags: ['Reminders'],
-        summary: 'Update reminder status (complete / dismiss / snooze)',
-        description: 'When status is `snoozed`, an optional `remindAt` reschedules the reminder.',
+        summary: 'Update reminder follow-up status',
+        description:
+          'Sets the reminder status to PENDING, IN_PROGRESS, FOLLOWUP, COMPLETED, or CANCELLED. An optional `remindAt` reschedules the reminder.',
         security: [{ bearerAuth: [] }],
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
         requestBody: {
@@ -1077,12 +1078,12 @@ const spec = {
                 properties: {
                   status: {
                     type: 'string',
-                    enum: ['pending', 'completed', 'dismissed', 'snoozed'],
+                    enum: ['PENDING', 'IN_PROGRESS', 'FOLLOWUP', 'COMPLETED', 'CANCELLED'],
                   },
                   remindAt: {
                     type: 'string',
                     format: 'date-time',
-                    description: 'New time when snoozing.',
+                    description: 'Optional new time to reschedule the reminder.',
                   },
                 },
               },
@@ -1128,7 +1129,10 @@ const spec = {
             name: 'status',
             in: 'query',
             required: false,
-            schema: { type: 'string', enum: ['pending', 'completed', 'dismissed', 'snoozed'] },
+            schema: {
+              type: 'string',
+              enum: ['PENDING', 'IN_PROGRESS', 'FOLLOWUP', 'COMPLETED', 'CANCELLED'],
+            },
           },
         ],
         responses: {

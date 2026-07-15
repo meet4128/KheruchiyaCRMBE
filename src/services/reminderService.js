@@ -5,7 +5,6 @@ const Amendment = require('../models/Amendment');
 const Member = require('../models/Member');
 const Inquiry = require('../models/Inquiry');
 const AppError = require('../utils/AppError');
-const { REMINDER_STATUS } = require('../constants/reminderStatus');
 const { messages } = require('../locales');
 
 /** Fields exposed for the assignee/in-loop member population */
@@ -110,8 +109,8 @@ const updateReminderStatus = async (id, status, remindAt) => {
   assertValidObjectId(id, messages.errors.reminderNotFound);
 
   const update = { status };
-  // Snoozing may carry a new time
-  if (status === REMINDER_STATUS.SNOOZED && remindAt) {
+  // A status change may optionally carry a new reminder time (reschedule)
+  if (remindAt) {
     update.remindAt = remindAt;
   }
 

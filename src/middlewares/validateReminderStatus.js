@@ -13,7 +13,7 @@ const statusSchema = Joi.object({
       'any.required': t.statusRequired,
       'string.empty': t.statusRequired,
     }),
-  // Optional new time when snoozing
+  // Optional new time to reschedule the reminder alongside the status change
   remindAt: Joi.date().iso().optional().messages({
     'date.format': t.remindAtInvalid,
     'date.base': t.remindAtInvalid,
