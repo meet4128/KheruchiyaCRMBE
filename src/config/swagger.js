@@ -169,7 +169,18 @@ const options = {
           type: 'object',
           required: ['priority'],
           properties: {
-            user: { type: 'string', nullable: true },
+            user: {
+              type: 'object',
+              nullable: true,
+              description: 'Assigned member snapshot',
+              properties: {
+                _id: { type: 'string', example: 'string' },
+                fullName: { type: 'string', example: 'Priya Shah' },
+                firstName: { type: 'string', example: 'string' },
+                lastName: { type: 'string', example: 'string' },
+                employeeId: { type: 'string', example: 'EMP-1001' },
+              },
+            },
             dueDate: {
               type: 'string',
               format: 'date-time',

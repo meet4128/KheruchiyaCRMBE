@@ -88,10 +88,22 @@ const hotelBookingSchema = new mongoose.Schema(
   { _id: false }
 );
 
+/** Assigned user snapshot — mirrors the Member record at assignment time */
+const checklistUserSchema = new mongoose.Schema(
+  {
+    _id: { type: String, trim: true },
+    fullName: { type: String, trim: true, default: '' },
+    firstName: { type: String, trim: true, default: '' },
+    lastName: { type: String, trim: true, default: '' },
+    employeeId: { type: String, trim: true, default: '' },
+  },
+  { _id: false }
+);
+
 /** Checklist item — assigned user, due date, priority, category */
 const checklistItemSchema = new mongoose.Schema(
   {
-    user: { type: String, trim: true, default: '' },
+    user: { type: checklistUserSchema, default: undefined },
     dueDate: { type: Date, set: (v) => (v === '' || v === null ? undefined : v) },
     priority: {
       type: String,

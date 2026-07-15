@@ -59,7 +59,7 @@ describe('inquiryService', () => {
 
       const payload = {
         ...validPayload,
-        checklist: [{ priority: 'MEDIUM', user: 'agent-1' }],
+        checklist: [{ priority: 'MEDIUM', user: { _id: 'agent-1', fullName: 'Priya Shah' } }],
       };
 
       await inquiryService.createInquiry(payload);

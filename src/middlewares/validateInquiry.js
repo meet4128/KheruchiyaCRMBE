@@ -106,8 +106,17 @@ const hotelBookingSchema = Joi.object({
   return value;
 });
 
+// Assigned user snapshot — mirrors the Member record at assignment time
+const checklistUserSchema = Joi.object({
+  _id: Joi.string().trim().optional().allow(''),
+  fullName: Joi.string().trim().optional().allow(''),
+  firstName: Joi.string().trim().optional().allow(''),
+  lastName: Joi.string().trim().optional().allow(''),
+  employeeId: Joi.string().trim().optional().allow(''),
+});
+
 const checklistItemSchema = Joi.object({
-  user: Joi.string().trim().optional().allow(''),
+  user: checklistUserSchema.optional(),
   dueDate: Joi.date().optional().allow('').empty(''),
   priority: Joi.string()
     .valid(...CHECKLIST_PRIORITY_VALUES)
