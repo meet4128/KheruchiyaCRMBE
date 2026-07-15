@@ -624,6 +624,16 @@ const options = {
             city: { type: 'string' },
           },
         },
+        MemberNameItem: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            fullName: { type: 'string', example: 'Priya Shah' },
+            firstName: { type: 'string' },
+            lastName: { type: 'string' },
+            employeeId: { type: 'string', example: 'EMP-1001' },
+          },
+        },
         MemberCreate: {
           type: 'object',
           required: [
@@ -2524,6 +2534,66 @@ const spec = {
                         limit: { type: 'integer' },
                         totalItems: { type: 'integer' },
                         totalPages: { type: 'integer' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Authentication required' },
+          403: { description: 'Forbidden (requires sales or admin)' },
+          422: { description: 'Validation failed' },
+        },
+      },
+    },
+    '/api/v1/members/name-search': {
+      get: {
+        tags: ['Members'],
+        summary: 'Search member names (autocomplete)',
+        description:
+          'Lightweight name lookup for pickers / autocomplete. **Sales or admin.** Matches `search` (case-insensitive) against `fullName`, `firstName`, `lastName`, and `employeeId`, returning only identity fields (no PII or document URLs).',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'search',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', minLength: 1, maxLength: 100, example: 'priya' },
+            description: 'Search term matched against member name and employeeId.',
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            required: false,
+            schema: { type: 'integer', default: 10, minimum: 1, maximum: 25 },
+          },
+          {
+            name: 'employmentStatus',
+            in: 'query',
+            required: false,
+            schema: {
+              type: 'string',
+              enum: ['active', 'inactive', 'probation', 'contract', 'terminated'],
+            },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Matching member names',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        items: {
+                          type: 'array',
+                          items: { $ref: '#/components/schemas/MemberNameItem' },
+                        },
                       },
                     },
                   },
