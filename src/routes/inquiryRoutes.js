@@ -4,6 +4,7 @@ const validateInquiry = require('../middlewares/validateInquiry');
 const validateInquiryQuery = require('../middlewares/validateInquiryQuery');
 const validateInquiryPhoneQuery = require('../middlewares/validateInquiryPhoneQuery');
 const validateInquiryAssign = require('../middlewares/validateInquiryAssign');
+const validateInquiryStatus = require('../middlewares/validateInquiryStatus');
 const authMiddleware = require('../middlewares/authMiddleware');
 const requireRoles = require('../middlewares/requireRoles');
 
@@ -34,6 +35,13 @@ router.patch(
   requireRoles('admin', 'sales'),
   validateInquiryAssign,
   inquiryController.assignInquiry
+);
+router.patch(
+  '/:id/status',
+  authMiddleware,
+  requireRoles('admin', 'sales'),
+  validateInquiryStatus,
+  inquiryController.updateInquiryStatus
 );
 router.use('/:inquiryId/amendments', amendmentRoutes);
 router.use('/:inquiryId/purchase-chats', purchaseTeamChatRoutes);

@@ -1882,6 +1882,48 @@ const spec = {
         },
       },
     },
+    '/api/v1/inquiries/{id}/status': {
+      patch: {
+        tags: ['Inquiries'],
+        summary: 'Update an inquiry status',
+        description:
+          'Updates the inquiry status to one of PENDING, IN_PROGRESS, COMPLETED, or CANCELLED. Only admin and sales roles may update.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', example: '507f1f77bcf86cd799439011' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['status'],
+                properties: {
+                  status: {
+                    type: 'string',
+                    enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
+                    example: 'IN_PROGRESS',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Status updated; returns the updated inquiry' },
+          401: { description: 'Authentication required' },
+          403: { description: 'Insufficient role (admin or sales required)' },
+          404: { description: 'Inquiry not found' },
+          422: { description: 'Validation failed' },
+        },
+      },
+    },
     '/api/v1/inquiries/{inquiryId}/purchase-chats': {
       get: {
         tags: ['Purchase Team Chat'],

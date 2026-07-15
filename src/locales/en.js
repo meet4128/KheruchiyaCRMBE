@@ -33,6 +33,10 @@ module.exports = {
       userIdRequired: 'userId is required',
       userIdInvalid: 'userId must be a valid member id',
     },
+    inquiryStatus: {
+      statusRequired: 'status is required',
+      statusInvalid: 'status must be PENDING, IN_PROGRESS, COMPLETED, or CANCELLED',
+    },
     inquiryQuery: {
       invalidPageLimit: 'Page and limit must be at least 1',
       limitMax: 'Limit must not exceed 100',

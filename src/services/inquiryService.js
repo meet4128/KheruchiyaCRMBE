@@ -223,11 +223,38 @@ const assignInquiry = async (id, userId) => {
   return inquiry;
 };
 
+/**
+ * Updates an inquiry's status. The status value is validated upstream against
+ * the allowed enum by the request middleware.
+ *
+ * @param {string} id - Inquiry id
+ * @param {string} status - New status (one of INQUIRY_STATUS_VALUES)
+ * @returns {Promise<any>} The updated inquiry document
+ */
+const updateInquiryStatus = async (id, status) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new AppError(messages.errors.invalidIdOrFormat, 400);
+  }
+
+  const inquiry = await Inquiry.findByIdAndUpdate(
+    id,
+    { $set: { status } },
+    { new: true, runValidators: true }
+  );
+
+  if (!inquiry) {
+    throw new AppError(messages.errors.inquiryNotFound, 404);
+  }
+
+  return inquiry;
+};
+
 module.exports = {
   createInquiry,
   getAllInquiries,
   getInquiriesByPhone,
   getInquiryById,
   assignInquiry,
+  updateInquiryStatus,
   getChecklistPriorityDefaults,
 };

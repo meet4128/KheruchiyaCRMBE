@@ -216,4 +216,35 @@ describe('inquiryService', () => {
       ).rejects.toMatchObject({ statusCode: 404 });
     });
   });
+
+  describe('updateInquiryStatus', () => {
+    it('updates the status and returns the updated doc', async () => {
+      const updated = { _id: VALID_INQUIRY_ID, status: 'IN_PROGRESS' };
+      Inquiry.findByIdAndUpdate.mockResolvedValue(updated);
+
+      const result = await inquiryService.updateInquiryStatus(VALID_INQUIRY_ID, 'IN_PROGRESS');
+
+      expect(Inquiry.findByIdAndUpdate).toHaveBeenCalledWith(
+        VALID_INQUIRY_ID,
+        { $set: { status: 'IN_PROGRESS' } },
+        { new: true, runValidators: true }
+      );
+      expect(result).toBe(updated);
+    });
+
+    it('throws 400 for an invalid inquiry id', async () => {
+      await expect(
+        inquiryService.updateInquiryStatus('not-an-id', 'PENDING')
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(Inquiry.findByIdAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('throws 404 when the inquiry does not exist', async () => {
+      Inquiry.findByIdAndUpdate.mockResolvedValue(null);
+
+      await expect(
+        inquiryService.updateInquiryStatus(VALID_INQUIRY_ID, 'COMPLETED')
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
 });
