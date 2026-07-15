@@ -15,6 +15,7 @@
     "seed:admin": "node scripts/seedAdmin.js",
     "seed:member": "node scripts/seedMember.js",
     "migrate:drop-reference-index": "node scripts/dropReferenceNumberIndex.js",
+    "migrate:checklist-user-object": "node scripts/migrateChecklistUserToObject.js",
     "prepare": "husky",
     "commit": "cz"
   },
