@@ -35,7 +35,7 @@ module.exports = {
     },
     inquiryStatus: {
       statusRequired: 'status is required',
-      statusInvalid: 'status must be PENDING, IN_PROGRESS, COMPLETED, or CANCELLED',
+      statusInvalid: 'status must be PENDING, IN_PROGRESS, FOLLOWUP, COMPLETED, or CANCELLED',
     },
     inquiryQuery: {
       invalidPageLimit: 'Page and limit must be at least 1',

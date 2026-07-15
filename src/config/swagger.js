@@ -235,7 +235,7 @@ const options = {
             typeOfBooking: { type: 'string' },
             status: {
               type: 'string',
-              enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
+              enum: ['PENDING', 'IN_PROGRESS', 'FOLLOWUP', 'COMPLETED', 'CANCELLED'],
               default: 'PENDING',
             },
             airTicket: {
@@ -1552,7 +1552,7 @@ const spec = {
             in: 'query',
             schema: {
               type: 'string',
-              enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
+              enum: ['PENDING', 'IN_PROGRESS', 'FOLLOWUP', 'COMPLETED', 'CANCELLED'],
             },
           },
           { name: 'search', in: 'query', schema: { type: 'string' } },
@@ -1891,7 +1891,7 @@ const spec = {
         tags: ['Inquiries'],
         summary: 'Update an inquiry status',
         description:
-          'Updates the inquiry status to one of PENDING, IN_PROGRESS, COMPLETED, or CANCELLED. Only admin and sales roles may update.',
+          'Updates the inquiry status to one of PENDING, IN_PROGRESS, FOLLOWUP, COMPLETED, or CANCELLED. Only admin and sales roles may update.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1911,7 +1911,7 @@ const spec = {
                 properties: {
                   status: {
                     type: 'string',
-                    enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
+                    enum: ['PENDING', 'IN_PROGRESS', 'FOLLOWUP', 'COMPLETED', 'CANCELLED'],
                     example: 'IN_PROGRESS',
                   },
                 },
