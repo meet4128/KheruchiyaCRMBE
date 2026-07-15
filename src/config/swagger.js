@@ -251,6 +251,19 @@ const options = {
               items: { $ref: '#/components/schemas/ChecklistItem' },
               default: [],
             },
+            assignedTo: {
+              type: 'object',
+              nullable: true,
+              description:
+                'Inquiry-level assignee (set via PATCH /inquiries/{id}/assign). Absent/null means unassigned.',
+              properties: {
+                _id: { type: 'string', example: '507f191e810c19729de860ea' },
+                fullName: { type: 'string', example: 'Priya Shah' },
+                firstName: { type: 'string', example: 'Priya' },
+                lastName: { type: 'string', example: 'Shah' },
+                employeeId: { type: 'string', example: 'EMP-1001' },
+              },
+            },
           },
         },
         User: {
@@ -1824,6 +1837,48 @@ const spec = {
           400: { description: 'Invalid inquiry id' },
           401: { description: 'Authentication required' },
           404: { description: 'Inquiry not found' },
+        },
+      },
+    },
+    '/api/v1/inquiries/{id}/assign': {
+      patch: {
+        tags: ['Inquiries'],
+        summary: 'Assign / reassign an inquiry to a member',
+        description:
+          "Assigns the inquiry to a single member (overwrites any existing assignee), taking it off every other user's list. Only admin and sales roles may assign. Non-admin callers then see only unassigned inquiries plus ones assigned to themselves.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', example: '507f1f77bcf86cd799439011' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['userId'],
+                properties: {
+                  userId: {
+                    type: 'string',
+                    description: 'Member id to assign the inquiry to',
+                    example: '507f191e810c19729de860ea',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Inquiry assigned; returns the updated inquiry' },
+          401: { description: 'Authentication required' },
+          403: { description: 'Insufficient role (admin or sales required)' },
+          404: { description: 'Inquiry or member not found' },
+          422: { description: 'Validation failed' },
         },
       },
     },

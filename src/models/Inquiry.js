@@ -100,6 +100,18 @@ const checklistUserSchema = new mongoose.Schema(
   { _id: false }
 );
 
+/** Inquiry-level assignee snapshot — the single member who owns this inquiry */
+const assignedToSchema = new mongoose.Schema(
+  {
+    _id: { type: String, trim: true },
+    fullName: { type: String, trim: true, default: '' },
+    firstName: { type: String, trim: true, default: '' },
+    lastName: { type: String, trim: true, default: '' },
+    employeeId: { type: String, trim: true, default: '' },
+  },
+  { _id: false }
+);
+
 /** Checklist item — assigned users, due date, priority, category */
 const checklistItemSchema = new mongoose.Schema(
   {
@@ -149,6 +161,8 @@ const inquirySchema = new mongoose.Schema(
       type: [checklistItemSchema],
       default: [],
     },
+    // Inquiry-level assignment — undefined/absent means unassigned (shared pool)
+    assignedTo: { type: assignedToSchema, default: undefined },
   },
   {
     timestamps: true,
@@ -165,6 +179,9 @@ inquirySchema.index({ 'referenceNumber.countryCode': 1, 'referenceNumber.number'
 
 /** Status: for filter performance on GET /inquiries */
 inquirySchema.index({ status: 1 });
+
+/** Assignee: scopes the inquiry list to the assigned member (non-admin callers) */
+inquirySchema.index({ 'assignedTo._id': 1 });
 
 const Inquiry = mongoose.model('Inquiry', inquirySchema);
 

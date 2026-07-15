@@ -1,11 +1,30 @@
 const mongoose = require('mongoose');
 const Inquiry = require('../models/Inquiry');
 const amendmentService = require('./amendmentService');
+const memberService = require('./memberService');
 const AppError = require('../utils/AppError');
 const { getChecklistPriorityDefaults } = require('../constants/checklistPriority');
 const { INQUIRY_STATUS_VALUES } = require('../constants/inquiryStatus');
+const { AUTH_ROLE } = require('../constants/authRole');
 const { applyChecklistDueDates } = require('../utils/checklistDueDate');
 const { messages } = require('../locales');
+
+/**
+ * Builds the visibility scope for a caller. Admin sees everything (null = no
+ * scope). Every other role sees only unassigned inquiries (shared pool) plus
+ * inquiries assigned to themselves.
+ */
+const buildAssignmentScope = (authUser) => {
+  if (!authUser || String(authUser.role).toLowerCase() === AUTH_ROLE.ADMIN) {
+    return null;
+  }
+  return {
+    $or: [{ assignedTo: null }, { 'assignedTo._id': String(authUser.id) }],
+  };
+};
+
+/** Combines a base filter with an optional visibility scope. */
+const applyScope = (filter, scope) => (scope ? { $and: [filter, scope] } : filter);
 
 /** Allowed sort fields to prevent query injection */
 const ALLOWED_SORT_FIELDS = [
@@ -36,7 +55,7 @@ const createInquiry = async (payload) => {
  * @param {Object} queryParams - Raw query params from Express (req.query)
  * @returns {Promise<{ items: any[], page: number, limit: number, totalItems: number, totalPages: number }>}
  */
-const getAllInquiries = async (queryParams = {}) => {
+const getAllInquiries = async (queryParams = {}, authUser = null) => {
   const {
     page = 1,
     limit = 10,
@@ -82,9 +101,15 @@ const getAllInquiries = async (queryParams = {}) => {
     filter.$or = [{ fullName: searchRegex }, { 'phoneNumber.number': searchRegex }];
   }
 
-  const query = Inquiry.find(filter).skip(skip).limit(limitNum).sort(safeSort);
+  // Visibility: non-admin callers see only unassigned + self-assigned inquiries.
+  const scopedFilter = applyScope(filter, buildAssignmentScope(authUser));
 
-  const [items, totalItems] = await Promise.all([query.exec(), Inquiry.countDocuments(filter)]);
+  const query = Inquiry.find(scopedFilter).skip(skip).limit(limitNum).sort(safeSort);
+
+  const [items, totalItems] = await Promise.all([
+    query.exec(),
+    Inquiry.countDocuments(scopedFilter),
+  ]);
 
   const totalPages = Math.ceil(totalItems / limitNum) || 1;
 
@@ -104,7 +129,7 @@ const getAllInquiries = async (queryParams = {}) => {
  * @param {Object} queryParams - Validated query params from req.query
  * @returns {Promise<{ items: any[], page: number, limit: number, totalItems: number, totalPages: number }>}
  */
-const getInquiriesByPhone = async (queryParams = {}) => {
+const getInquiriesByPhone = async (queryParams = {}, authUser = null) => {
   const { number, countryCode, page = 1, limit = 10, sort = '-createdAt' } = queryParams;
 
   const pageNum = Math.max(parseInt(page, 10) || 1, 1);
@@ -123,9 +148,15 @@ const getInquiriesByPhone = async (queryParams = {}) => {
     filter['phoneNumber.countryCode'] = countryCode;
   }
 
-  const query = Inquiry.find(filter).skip(skip).limit(limitNum).sort(safeSort);
+  // Visibility: non-admin callers see only unassigned + self-assigned inquiries.
+  const scopedFilter = applyScope(filter, buildAssignmentScope(authUser));
 
-  const [items, totalItems] = await Promise.all([query.exec(), Inquiry.countDocuments(filter)]);
+  const query = Inquiry.find(scopedFilter).skip(skip).limit(limitNum).sort(safeSort);
+
+  const [items, totalItems] = await Promise.all([
+    query.exec(),
+    Inquiry.countDocuments(scopedFilter),
+  ]);
 
   const totalPages = Math.ceil(totalItems / limitNum) || 1;
 
@@ -156,10 +187,47 @@ const getInquiryById = async (id) => {
   };
 };
 
+/**
+ * Assigns (or reassigns) an inquiry to a single member. Overwrites any existing
+ * assignee, taking the inquiry off every other user's list.
+ *
+ * @param {string} id - Inquiry id
+ * @param {string} userId - Member id to assign the inquiry to
+ * @returns {Promise<any>} The updated inquiry document
+ */
+const assignInquiry = async (id, userId) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new AppError(messages.errors.invalidIdOrFormat, 400);
+  }
+
+  // Resolve the member snapshot — throws 400 (invalid id) / 404 (not found).
+  const member = await memberService.getMemberById(userId);
+  const assignedTo = {
+    _id: String(member._id),
+    fullName: member.fullName || '',
+    firstName: member.firstName || '',
+    lastName: member.lastName || '',
+    employeeId: member.employeeId || '',
+  };
+
+  const inquiry = await Inquiry.findByIdAndUpdate(
+    id,
+    { $set: { assignedTo } },
+    { new: true, runValidators: true }
+  );
+
+  if (!inquiry) {
+    throw new AppError(messages.errors.inquiryNotFound, 404);
+  }
+
+  return inquiry;
+};
+
 module.exports = {
   createInquiry,
   getAllInquiries,
   getInquiriesByPhone,
   getInquiryById,
+  assignInquiry,
   getChecklistPriorityDefaults,
 };

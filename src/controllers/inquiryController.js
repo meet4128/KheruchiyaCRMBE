@@ -19,7 +19,7 @@ const createInquiry = asyncHandler(async (req, res) => {
 });
 
 const getInquiries = asyncHandler(async (req, res) => {
-  const result = await inquiryService.getAllInquiries(req.query);
+  const result = await inquiryService.getAllInquiries(req.query, req.user);
 
   res.status(200).json({
     status: 'success',
@@ -28,7 +28,7 @@ const getInquiries = asyncHandler(async (req, res) => {
 });
 
 const getInquiriesByPhone = asyncHandler(async (req, res) => {
-  const result = await inquiryService.getInquiriesByPhone(req.query);
+  const result = await inquiryService.getInquiriesByPhone(req.query, req.user);
 
   res.status(200).json({
     status: 'success',
@@ -38,6 +38,15 @@ const getInquiriesByPhone = asyncHandler(async (req, res) => {
 
 const getInquiryById = asyncHandler(async (req, res) => {
   const inquiry = await inquiryService.getInquiryById(req.params.id);
+
+  res.status(200).json({
+    status: 'success',
+    data: { inquiry },
+  });
+});
+
+const assignInquiry = asyncHandler(async (req, res) => {
+  const inquiry = await inquiryService.assignInquiry(req.params.id, req.body.userId);
 
   res.status(200).json({
     status: 'success',
@@ -59,5 +68,6 @@ module.exports = {
   getInquiries,
   getInquiriesByPhone,
   getInquiryById,
+  assignInquiry,
   getChecklistPriorityDefaults,
 };

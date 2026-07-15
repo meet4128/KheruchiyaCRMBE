@@ -11,11 +11,20 @@ jest.mock('../../models/Inquiry', () => {
     findOne: jest.fn(),
     create: jest.fn(),
     find: jest.fn(() => chain),
+    findByIdAndUpdate: jest.fn(),
     countDocuments: jest.fn().mockResolvedValue(0),
   };
 });
 
+jest.mock('../memberService', () => ({
+  getMemberById: jest.fn(),
+}));
+
 const Inquiry = require('../../models/Inquiry');
+const memberService = require('../memberService');
+
+const VALID_INQUIRY_ID = '507f1f77bcf86cd799439011';
+const VALID_MEMBER_ID = '507f191e810c19729de860ea';
 
 describe('inquiryService', () => {
   beforeEach(() => {
@@ -139,6 +148,72 @@ describe('inquiryService', () => {
       await inquiryService.getAllInquiries({ status: 'INVALID' });
 
       expect(Inquiry.find).toHaveBeenCalledWith({});
+    });
+
+    it('scopes a non-admin caller to unassigned + self-assigned inquiries', async () => {
+      await inquiryService.getAllInquiries({}, { role: 'sales', id: VALID_MEMBER_ID });
+
+      expect(Inquiry.find).toHaveBeenCalledWith({
+        $and: [{}, { $or: [{ assignedTo: null }, { 'assignedTo._id': VALID_MEMBER_ID }] }],
+      });
+    });
+
+    it('does NOT scope an admin caller (sees all inquiries)', async () => {
+      await inquiryService.getAllInquiries({}, { role: 'admin', id: VALID_MEMBER_ID });
+
+      expect(Inquiry.find).toHaveBeenCalledWith({});
+    });
+  });
+
+  describe('assignInquiry', () => {
+    const member = {
+      _id: VALID_MEMBER_ID,
+      fullName: 'Priya Shah',
+      firstName: 'Priya',
+      lastName: 'Shah',
+      employeeId: 'EMP-1001',
+    };
+
+    it('assigns the inquiry with a member snapshot and returns the updated doc', async () => {
+      memberService.getMemberById.mockResolvedValue(member);
+      const updated = { _id: VALID_INQUIRY_ID, assignedTo: member };
+      Inquiry.findByIdAndUpdate.mockResolvedValue(updated);
+
+      const result = await inquiryService.assignInquiry(VALID_INQUIRY_ID, VALID_MEMBER_ID);
+
+      expect(memberService.getMemberById).toHaveBeenCalledWith(VALID_MEMBER_ID);
+      expect(Inquiry.findByIdAndUpdate).toHaveBeenCalledWith(
+        VALID_INQUIRY_ID,
+        {
+          $set: {
+            assignedTo: {
+              _id: VALID_MEMBER_ID,
+              fullName: 'Priya Shah',
+              firstName: 'Priya',
+              lastName: 'Shah',
+              employeeId: 'EMP-1001',
+            },
+          },
+        },
+        { new: true, runValidators: true }
+      );
+      expect(result).toBe(updated);
+    });
+
+    it('throws 400 for an invalid inquiry id', async () => {
+      await expect(
+        inquiryService.assignInquiry('not-an-id', VALID_MEMBER_ID)
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(memberService.getMemberById).not.toHaveBeenCalled();
+    });
+
+    it('throws 404 when the inquiry does not exist', async () => {
+      memberService.getMemberById.mockResolvedValue(member);
+      Inquiry.findByIdAndUpdate.mockResolvedValue(null);
+
+      await expect(
+        inquiryService.assignInquiry(VALID_INQUIRY_ID, VALID_MEMBER_ID)
+      ).rejects.toMatchObject({ statusCode: 404 });
     });
   });
 });

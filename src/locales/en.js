@@ -29,6 +29,10 @@ module.exports = {
       checklistPriorityInvalid: 'Checklist priority must be HIGH, MEDIUM, or LOW',
     },
     failed: 'Validation Failed',
+    inquiryAssign: {
+      userIdRequired: 'userId is required',
+      userIdInvalid: 'userId must be a valid member id',
+    },
     inquiryQuery: {
       invalidPageLimit: 'Page and limit must be at least 1',
       limitMax: 'Limit must not exceed 100',
