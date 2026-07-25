@@ -54,7 +54,7 @@ const airTicketSchema = Joi.object({
     .optional()
     .allow('')
     .empty(''),
-  remark: Joi.string().required().trim(),
+  remark: Joi.string().trim().optional().allow(''),
 });
 
 // ─── Hotel Booking schema (present only for typeOfBooking = "Hotel Booking") ──
@@ -97,7 +97,7 @@ const hotelBookingSchema = Joi.object({
     .default([]),
   budgetMin: budgetString.optional(),
   budgetMax: budgetString.optional(),
-  remark: Joi.string().required().trim(),
+  remark: Joi.string().trim().optional().allow(''),
 }).custom((value, helpers) => {
   const { budgetMin, budgetMax } = value;
   if (budgetMin && budgetMax && Number(budgetMax) < Number(budgetMin)) {
