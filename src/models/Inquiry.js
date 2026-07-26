@@ -62,7 +62,7 @@ const airTicketSchema = new mongoose.Schema(
       set: (v) => (v === '' || v === null ? undefined : v),
       default: undefined,
     },
-    remark: { type: String, required: true, trim: true },
+    remark: { type: String, trim: true, default: '' },
   },
   { _id: false }
 );
@@ -83,7 +83,7 @@ const hotelBookingSchema = new mongoose.Schema(
     transfers: { type: [String], enum: HOTEL_TRANSFERS, default: [] },
     budgetMin: { type: String, trim: true, default: '' },
     budgetMax: { type: String, trim: true, default: '' },
-    remark: { type: String, required: true, trim: true },
+    remark: { type: String, trim: true, default: '' },
   },
   { _id: false }
 );

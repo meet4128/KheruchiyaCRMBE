@@ -66,7 +66,7 @@ const options = {
         },
         AirTicket: {
           type: 'object',
-          required: ['bookingType', 'flightSegments', 'remark'],
+          required: ['bookingType', 'flightSegments'],
           properties: {
             bookingType: {
               type: 'string',
@@ -86,7 +86,7 @@ const options = {
         },
         HotelBooking: {
           type: 'object',
-          required: ['city', 'checkInDate', 'checkOutDate', 'rooms', 'adults', 'remark'],
+          required: ['city', 'checkInDate', 'checkOutDate', 'rooms', 'adults'],
           properties: {
             city: { type: 'string' },
             checkInDate: { type: 'string', format: 'date-time' },
