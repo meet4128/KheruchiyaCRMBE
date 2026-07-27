@@ -125,6 +125,7 @@ const setPasswordLimiter = rateLimit({
   max: 10,
   message: { status: 'error', message: messages.rateLimit.tooManyRequests },
 });
+
 if (process.env.NODE_ENV !== 'test') {
   app.use('/api/v1/auth/set-password', setPasswordLimiter);
   app.use('/api/v1/auth/reset-password', setPasswordLimiter);
