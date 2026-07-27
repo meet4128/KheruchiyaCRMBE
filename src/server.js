@@ -75,7 +75,17 @@ if (typeof server.requestTimeout === 'number') {
   server.requestTimeout = socketTimeoutMs;
 }
 
+// Log unhandled rejections but keep serving. A transient dependency blip (e.g. a
+// brief MongoDB/Atlas disconnect rejecting an in-flight query) must not take the
+// whole HTTP server down — that turns a 1s hiccup into a full restart + gateway 502.
 process.on('unhandledRejection', (err) => {
-  console.error('Unhandled Rejection:', err);
+  console.error('[ERROR] Unhandled Rejection (kept alive):', err);
+});
+
+// A truly uncaught exception can leave the process in an undefined state, so drain
+// and exit — PM2 will restart. This should be rare; unhandled promise rejections
+// (above) are the common case and no longer kill the server.
+process.on('uncaughtException', (err) => {
+  console.error('[ERROR] Uncaught Exception — shutting down:', err);
   server.close(() => process.exit(1));
 });
