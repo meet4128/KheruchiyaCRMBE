@@ -6,6 +6,10 @@ const connectDB = async () => {
     maxPoolSize: 10,
     minPoolSize: 2,
     serverSelectionTimeoutMS: 10000,
+    // Auto-retry a single transient failure instead of surfacing a rejection during
+    // brief Atlas failovers/network blips (the churn behind the earlier crash loop).
+    retryWrites: true,
+    retryReads: true,
   };
 
   try {
