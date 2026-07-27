@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const AppError = require('./AppError');
 const { log } = require('./logger');
+const fetchWithTimeout = require('./fetchWithTimeout');
 
 const MIME_TO_EXT = {
   'application/pdf': '.pdf',
@@ -47,9 +48,11 @@ const safeBaseName = (name, ext) => {
  */
 const fetchMediaMetadata = async (mediaId) => {
   const url = `https://graph.facebook.com/${graphApiVersion()}/${encodeURIComponent(mediaId)}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken()}` },
-  });
+  const res = await fetchWithTimeout(
+    url,
+    { headers: { Authorization: `Bearer ${accessToken()}` } },
+    { label: 'WhatsApp media metadata' }
+  );
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.url) {
     const detail = data?.error?.message || res.statusText || 'Media metadata fetch failed';
@@ -63,9 +66,11 @@ const fetchMediaMetadata = async (mediaId) => {
  * @returns {Promise<Buffer>}
  */
 const downloadMediaBuffer = async (downloadUrl) => {
-  const res = await fetch(downloadUrl, {
-    headers: { Authorization: `Bearer ${accessToken()}` },
-  });
+  const res = await fetchWithTimeout(
+    downloadUrl,
+    { headers: { Authorization: `Bearer ${accessToken()}` } },
+    { label: 'WhatsApp media download' }
+  );
   if (!res.ok) {
     throw new AppError(`WhatsApp media download failed: ${res.statusText}`, 502);
   }

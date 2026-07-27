@@ -6,6 +6,7 @@
 const DEFAULT_REQUEST_MS = 120_000; // 2 min — API JSON + DB
 const DEFAULT_WEBHOOK_MS = 180_000; // 3 min — inbound WhatsApp + media fetch
 const DEFAULT_SERVER_SOCKET_MS = 125_000; // slightly above request timeout
+const DEFAULT_OUTBOUND_MS = 30_000; // outbound third-party calls (Meta Graph API) — well under request/proxy timeout
 const MIN_MS = 5_000;
 const MAX_MS = 600_000;
 
@@ -27,6 +28,10 @@ function getServerSocketTimeoutMs() {
   return parseMs(process.env.HTTP_SERVER_TIMEOUT_MS, DEFAULT_SERVER_SOCKET_MS);
 }
 
+function getOutboundFetchTimeoutMs() {
+  return parseMs(process.env.HTTP_OUTBOUND_TIMEOUT_MS, DEFAULT_OUTBOUND_MS);
+}
+
 function getTrustProxySetting() {
   const raw = process.env.TRUST_PROXY_HOPS;
   if (raw === undefined || raw === '') {
@@ -42,7 +47,9 @@ module.exports = {
   getRequestTimeoutMs,
   getWebhookRequestTimeoutMs,
   getServerSocketTimeoutMs,
+  getOutboundFetchTimeoutMs,
   getTrustProxySetting,
   DEFAULT_REQUEST_MS,
   DEFAULT_WEBHOOK_MS,
+  DEFAULT_OUTBOUND_MS,
 };

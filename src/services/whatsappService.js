@@ -6,6 +6,7 @@ const amendmentService = require('./amendmentService');
 const { storeInboundMedia } = require('../utils/whatsappInboundMedia');
 const { log } = require('../utils/logger');
 const AppError = require('../utils/AppError');
+const fetchWithTimeout = require('../utils/fetchWithTimeout');
 
 const MAX_LIMIT = 100;
 
@@ -422,14 +423,18 @@ const sendMessage = async ({
   const url = graphMessagesUrl();
   const graphBody = buildGraphBody({ to, type, text, mediaUrl, fileName, template });
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(graphBody),
     },
-    body: JSON.stringify(graphBody),
-  });
+    { label: 'WhatsApp send' }
+  );
 
   const data = await res.json().catch(() => ({}));
 
