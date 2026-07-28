@@ -54,6 +54,12 @@ module.exports = {
       invalidDateRange: 'End date must be on or after the start date',
       invalidEnum: 'Invalid value for the selected filter',
     },
+    unverifiedPaymentsQuery: {
+      invalidPageLimit: 'Page and limit must be at least 1',
+      limitMax: 'Limit must not exceed 100',
+      invalidSort:
+        'Sort must be one of: submittedAt, amount, createdAt (optionally prefixed with -)',
+    },
     reminder: {
       remindAtRequired: 'Reminder date/time (remindAt) is required',
       remindAtInvalid: 'remindAt must be a valid ISO 8601 date-time with offset',

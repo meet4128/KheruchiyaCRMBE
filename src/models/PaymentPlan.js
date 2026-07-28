@@ -38,6 +38,11 @@ const paymentPlanSchema = new mongoose.Schema(
     numberOfInstallments: { type: Number, required: true, min: 1 },
     paymentReceivedTillNow: { type: Number, min: 0, default: 0 },
     installments: { type: [installmentSchema], default: [] },
+    // Account-team verification state (drives the "Unverified" queue on the Accounting screen).
+    // Every sales submit/update resets this to false; account-role users verify/un-verify.
+    verified: { type: Boolean, default: false },
+    verifiedAt: { type: Date },
+    verifiedBy: { type: String, trim: true },
     createdBy: { type: String, required: true, trim: true },
     updatedBy: { type: String, trim: true },
   },
@@ -45,6 +50,9 @@ const paymentPlanSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+/** Unverified queue: list plans awaiting account verification, newest submission first. */
+paymentPlanSchema.index({ verified: 1, updatedAt: -1 });
 
 const PaymentPlan = mongoose.model('PaymentPlan', paymentPlanSchema);
 

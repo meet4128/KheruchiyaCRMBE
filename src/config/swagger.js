@@ -1167,6 +1167,101 @@ const spec = {
         },
       },
     },
+    '/api/v1/payments/unverified': {
+      get: {
+        tags: ['Payments'],
+        summary: 'List unverified payment plans (Accounting → Unverified)',
+        description:
+          '**Account or admin.** Cross-inquiry list of payment plans awaiting account verification (`verified !== true`). One row per payment-plan (per inquiry): a plan enters this queue whenever sales submits/updates it (`PUT .../payment-plan`) and leaves once account verifies it. Joined to the inquiry for contact / assignee / inquiry-number columns. `installments[].paymentProofUrl` carries the payment-proof uploads ("Credit Account" column).',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'page',
+            in: 'query',
+            required: false,
+            schema: { type: 'integer', minimum: 1, default: 1 },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            required: false,
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
+          {
+            name: 'sort',
+            in: 'query',
+            required: false,
+            schema: {
+              type: 'string',
+              enum: ['submittedAt', '-submittedAt', 'amount', '-amount', 'createdAt', '-createdAt'],
+              default: '-submittedAt',
+            },
+          },
+          {
+            name: 'search',
+            in: 'query',
+            required: false,
+            schema: { type: 'string', maxLength: 100 },
+            description:
+              'Partial, case-insensitive match on contact name / inquiry title / reference number.',
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Paginated unverified payment plans',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        items: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              paymentPlanId: { type: 'string' },
+                              inquiryId: { type: 'string' },
+                              travelDate: { type: 'string', format: 'date-time' },
+                              bookingType: { type: 'string' },
+                              totalAmount: { type: 'number' },
+                              numberOfInstallments: { type: 'integer' },
+                              paymentReceivedTillNow: { type: 'number' },
+                              installments: {
+                                type: 'array',
+                                items: { type: 'object' },
+                                description:
+                                  'Per-row amount/dueDate/receivedDate/mode + paymentProofUrl (proof upload).',
+                              },
+                              verified: { type: 'boolean', example: false },
+                              submittedAt: { type: 'string', format: 'date-time' },
+                              createdAt: { type: 'string', format: 'date-time' },
+                              inquiry: { type: 'object' },
+                              contact: { type: 'object' },
+                              assignedTo: { type: 'object' },
+                            },
+                          },
+                        },
+                        page: { type: 'integer' },
+                        limit: { type: 'integer' },
+                        totalItems: { type: 'integer' },
+                        totalPages: { type: 'integer' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Authentication required' },
+          403: { description: 'Insufficient role (account or admin required)' },
+          422: { description: 'Validation failed (invalid page/limit/sort)' },
+        },
+      },
+    },
     '/webhooks/whatsapp': {
       get: {
         tags: ['WhatsApp'],
