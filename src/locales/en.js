@@ -186,6 +186,10 @@ module.exports = {
       proofMimeInvalid: 'Only PDF, JPEG, JPG, or PNG files are allowed',
       proofTooLarge: 'File is too large (max 5MB)',
     },
+    paymentVerification: {
+      verifiedRequired: 'verified is required',
+      verifiedInvalid: 'verified must be a boolean (true to verify, false to un-verify)',
+    },
     password: {
       tokenRequired: 'Token is required',
       tokenInvalid: 'Token format is invalid',
@@ -241,6 +245,8 @@ module.exports = {
     amendmentSessionNotFound: 'Active amendment session not found or already finalized',
     amendmentSessionFinalized: 'This chat session is finalized; start a new session',
     paymentPlanNotFound: 'Payment plan not found for this inquiry',
+    paymentNotVerified:
+      'Payment must be verified by the account team before this amendment can be marked as won',
     somethingWentWrong: 'Something went wrong',
     invalidIdOrFormat: 'Invalid ID or data format',
     authTokenInvalid: 'Token is invalid',

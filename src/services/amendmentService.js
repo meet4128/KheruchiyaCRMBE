@@ -4,6 +4,7 @@ const AmendmentMessage = require('../models/AmendmentMessage');
 const AmendmentNote = require('../models/AmendmentNote');
 const AmendmentActiveSession = require('../models/AmendmentActiveSession');
 const Inquiry = require('../models/Inquiry');
+const PaymentPlan = require('../models/PaymentPlan');
 const { ACTION_TO_STATUS } = require('../constants/amendmentAction');
 const { AMENDMENT_STATUS } = require('../constants/amendmentStatus');
 const generateAmendmentId = require('../utils/generateAmendmentId');
@@ -60,6 +61,12 @@ const finalizeAmendment = async (inquiryId, payload, userId) => {
     const amount = payload.amountCharged;
     if (amount == null || Number.isNaN(Number(amount)) || Number(amount) < 0) {
       throw new AppError(messages.validation.amendment.amountChargedRequired, 422);
+    }
+    // Gate: an amendment can only be marked as won once the account team has
+    // verified the inquiry's payment plan.
+    const plan = await PaymentPlan.findOne({ inquiryId: inquiry._id }).select('verified').lean();
+    if (!plan || plan.verified !== true) {
+      throw new AppError(messages.errors.paymentNotVerified, 409);
     }
   }
 

@@ -862,6 +862,13 @@ const options = {
               type: 'array',
               items: { $ref: '#/components/schemas/PaymentInstallment' },
             },
+            verified: {
+              type: 'boolean',
+              description: 'Account-team verification state. Reset to false on every sales save.',
+              example: false,
+            },
+            verifiedAt: { type: 'string', format: 'date-time', nullable: true },
+            verifiedBy: { type: 'string', description: 'Account user who verified.' },
             createdBy: { type: 'string' },
             updatedBy: { type: 'string' },
             createdAt: { type: 'string', format: 'date-time' },
@@ -1259,6 +1266,67 @@ const spec = {
           401: { description: 'Authentication required' },
           403: { description: 'Insufficient role (account or admin required)' },
           422: { description: 'Validation failed (invalid page/limit/sort)' },
+        },
+      },
+    },
+    '/api/v1/payments/{inquiryId}/verify': {
+      patch: {
+        tags: ['Payments'],
+        summary: 'Verify / un-verify an inquiry payment plan (Accounting)',
+        description:
+          '**Account or admin.** Marks the inquiry payment plan as verified (`verified=true`) or sends it back to the Unverified queue (`verified=false`). Verifying stamps `verifiedAt`/`verifiedBy`. Verification is the gate that lets sales mark the amendment as won: `POST .../amendments/finalize` with `action=mark_won` returns **409** until the plan is verified.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'inquiryId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            example: '507f1f77bcf86cd799439011',
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['verified'],
+                properties: {
+                  verified: {
+                    type: 'boolean',
+                    description: 'true to verify, false to un-verify (return to queue).',
+                    example: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Updated payment plan',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        paymentPlan: { $ref: '#/components/schemas/PaymentPlan' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          401: { description: 'Authentication required' },
+          403: { description: 'Insufficient role (account or admin required)' },
+          404: { description: 'Inquiry or payment plan not found' },
+          422: { description: 'Validation failed (verified is required / not a boolean)' },
         },
       },
     },

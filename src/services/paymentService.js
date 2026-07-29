@@ -72,6 +72,34 @@ const getPaymentPlan = async (inquiryId) => {
   return plan;
 };
 
+/**
+ * Account-team verification of an inquiry's payment plan. Verifying (verified=true)
+ * is the gate sales needs before an amendment can be marked as won; un-verifying
+ * (verified=false) sends the plan back into the account "Unverified" queue.
+ *
+ * @param {string} inquiryId
+ * @param {boolean} verified
+ * @param {string} userId account-role user performing the action
+ */
+const verifyPaymentPlan = async (inquiryId, verified, userId) => {
+  await loadInquiry(inquiryId);
+
+  const update = verified
+    ? { verified: true, verifiedAt: new Date(), verifiedBy: userId }
+    : { verified: false, verifiedAt: null, verifiedBy: '' };
+
+  const plan = await PaymentPlan.findOneAndUpdate(
+    { inquiryId },
+    { $set: update },
+    { new: true, runValidators: true }
+  ).lean();
+
+  if (!plan) {
+    throw new AppError(messages.errors.paymentPlanNotFound, 404);
+  }
+  return plan;
+};
+
 // Client-facing sort keys → real plan fields (allowlisted to avoid injection).
 const UNVERIFIED_SORT_FIELDS = {
   submittedAt: 'updatedAt',
@@ -188,6 +216,7 @@ const getUnverifiedPayments = async (queryParams = {}) => {
 module.exports = {
   savePaymentPlan,
   getPaymentPlan,
+  verifyPaymentPlan,
   getUnverifiedPayments,
   loadInquiry,
 };
