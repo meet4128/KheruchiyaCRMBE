@@ -803,6 +803,12 @@ const options = {
           type: 'object',
           required: ['amount'],
           properties: {
+            _id: {
+              type: 'string',
+              description:
+                'Stable **paymentId** of this installment. Returned on every read; send it back on PUT to update an existing row (omit for a brand-new row). Used as `installmentId` in the per-installment verify endpoint.',
+              example: '6700aa2222222222222222b2',
+            },
             amount: { type: 'number', minimum: 0, example: 25000 },
             dueDate: { type: 'string', format: 'date-time', nullable: true },
             receivedDate: { type: 'string', format: 'date-time', nullable: true },
@@ -823,13 +829,33 @@ const options = {
               description: 'Path from POST .../payment-plan/uploads',
               example: '/uploads/payment-proofs/507f1f77bcf86cd799439011/172000-abc.jpg',
             },
+            verificationStatus: {
+              type: 'string',
+              enum: ['PENDING', 'VERIFIED'],
+              readOnly: true,
+              description:
+                'Account-team verification of THIS installment. New/edited rows are PENDING; the account team sets VERIFIED via the verify endpoint. A VERIFIED installment is locked — editing/removing it on PUT returns 409. Server-controlled (ignored if sent in a request).',
+              example: 'PENDING',
+            },
+            verifiedAt: {
+              type: 'string',
+              format: 'date-time',
+              nullable: true,
+              readOnly: true,
+              description: 'When this installment was verified (null while PENDING).',
+            },
+            verifiedBy: {
+              type: 'string',
+              readOnly: true,
+              description: 'Account user id who verified this installment.',
+            },
           },
         },
         PaymentPlanSaveRequest: {
           type: 'object',
           required: ['totalAmount', 'numberOfInstallments', 'installments'],
           description:
-            'Upsert: creates the plan on first save, overwrites it (header + full installment list) on subsequent saves. `installments.length` must equal `numberOfInstallments`.',
+            'Upsert: creates the plan on first save. Installments are **merged per row** (not wholesale-replaced): send each existing row back with its `_id` (paymentId) to update it, and omit `_id` for new rows. A row already VERIFIED by the account team is **locked** — changing or dropping it returns **409**; re-send it unchanged. New/edited rows are saved as PENDING. `installments.length` must equal `numberOfInstallments`.',
           properties: {
             travelDate: {
               type: 'string',
@@ -864,11 +890,23 @@ const options = {
             },
             verified: {
               type: 'boolean',
-              description: 'Account-team verification state. Reset to false on every sales save.',
+              readOnly: true,
+              description:
+                'Roll-up derived from the installments: true only when EVERY installment is VERIFIED. This is the gate that lets sales mark an amendment as won. Never set directly by the client.',
               example: false,
             },
-            verifiedAt: { type: 'string', format: 'date-time', nullable: true },
-            verifiedBy: { type: 'string', description: 'Account user who verified.' },
+            verifiedAt: {
+              type: 'string',
+              format: 'date-time',
+              nullable: true,
+              readOnly: true,
+              description: 'When the plan became fully verified (null otherwise).',
+            },
+            verifiedBy: {
+              type: 'string',
+              readOnly: true,
+              description: 'Account user who completed verification of the whole plan.',
+            },
             createdBy: { type: 'string' },
             updatedBy: { type: 'string' },
             createdAt: { type: 'string', format: 'date-time' },
@@ -1179,7 +1217,7 @@ const spec = {
         tags: ['Payments'],
         summary: 'List unverified payment plans (Accounting → Unverified)',
         description:
-          '**Account or admin.** Cross-inquiry list of payment plans awaiting account verification (`verified !== true`). One row per payment-plan (per inquiry): a plan enters this queue whenever sales submits/updates it (`PUT .../payment-plan`) and leaves once account verifies it. Joined to the inquiry for contact / assignee / inquiry-number columns. `installments[].paymentProofUrl` carries the payment-proof uploads ("Credit Account" column).',
+          '**Account or admin.** Cross-inquiry list of payment plans that still have at least one **PENDING** installment. One row per payment-plan (per inquiry): a plan appears here while any installment is unverified and leaves once every installment is VERIFIED. Each `installments[]` row carries its own `verificationStatus` (and `_id`/paymentId) so the account team can verify rows individually. Joined to the inquiry for contact / assignee / inquiry-number columns. `installments[].paymentProofUrl` carries the payment-proof uploads ("Credit Account" column).',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1239,9 +1277,9 @@ const spec = {
                               paymentReceivedTillNow: { type: 'number' },
                               installments: {
                                 type: 'array',
-                                items: { type: 'object' },
+                                items: { $ref: '#/components/schemas/PaymentInstallment' },
                                 description:
-                                  'Per-row amount/dueDate/receivedDate/mode + paymentProofUrl (proof upload).',
+                                  'Per-row amount/dueDate/receivedDate/mode + paymentProofUrl (proof upload) and per-row verificationStatus / _id (paymentId).',
                               },
                               verified: { type: 'boolean', example: false },
                               submittedAt: { type: 'string', format: 'date-time' },
@@ -1272,9 +1310,9 @@ const spec = {
     '/api/v1/payments/{inquiryId}/verify': {
       patch: {
         tags: ['Payments'],
-        summary: 'Verify / un-verify an inquiry payment plan (Accounting)',
+        summary: 'Verify / un-verify a whole payment plan — all installments (Accounting)',
         description:
-          '**Account or admin.** Marks the inquiry payment plan as verified (`verified=true`) or sends it back to the Unverified queue (`verified=false`). Verifying stamps `verifiedAt`/`verifiedBy`. Verification is the gate that lets sales mark the amendment as won: `POST .../amendments/finalize` with `action=mark_won` returns **409** until the plan is verified.',
+          '**Account or admin.** Applies to **every** installment at once ("verify all" / "un-verify all"): `verified=true` sets all installments VERIFIED (and stamps the plan `verifiedAt`/`verifiedBy`); `verified=false` sends them all back to PENDING. For a single row use `PATCH .../installments/{installmentId}/verify`. Full verification is the gate that lets sales mark the amendment as won: `POST .../amendments/finalize` with `action=mark_won` returns **409** until every installment is verified.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1295,7 +1333,7 @@ const spec = {
                 properties: {
                   verified: {
                     type: 'boolean',
-                    description: 'true to verify, false to un-verify (return to queue).',
+                    description: 'true to verify all installments, false to un-verify all.',
                     example: true,
                   },
                 },
@@ -1326,6 +1364,76 @@ const spec = {
           401: { description: 'Authentication required' },
           403: { description: 'Insufficient role (account or admin required)' },
           404: { description: 'Inquiry or payment plan not found' },
+          422: { description: 'Validation failed (verified is required / not a boolean)' },
+        },
+      },
+    },
+    '/api/v1/payments/{inquiryId}/installments/{installmentId}/verify': {
+      patch: {
+        tags: ['Payments'],
+        summary: 'Verify / un-verify a single installment (Accounting)',
+        description:
+          '**Account or admin.** Verifies (`verified=true`) or un-verifies (`verified=false`) ONE installment, identified by `installmentId` (the installment `_id` / paymentId). Verifying locks that installment from further sales edits and stamps its `verifiedAt`/`verifiedBy`; un-verifying returns it to PENDING. The plan-level `verified` roll-up is recomputed from all installments (true only once every installment is VERIFIED).',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'inquiryId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            example: '507f1f77bcf86cd799439011',
+          },
+          {
+            name: 'installmentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+            description: 'The installment `_id` (paymentId) from the payment plan.',
+            example: '6700aa2222222222222222b2',
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['verified'],
+                properties: {
+                  verified: {
+                    type: 'boolean',
+                    description: 'true to verify this installment, false to un-verify it.',
+                    example: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Updated payment plan (with the installment status changed)',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'success' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        paymentPlan: { $ref: '#/components/schemas/PaymentPlan' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Invalid installmentId' },
+          401: { description: 'Authentication required' },
+          403: { description: 'Insufficient role (account or admin required)' },
+          404: { description: 'Inquiry, payment plan, or installment not found' },
           422: { description: 'Validation failed (verified is required / not a boolean)' },
         },
       },
@@ -2590,9 +2698,9 @@ const spec = {
       },
       put: {
         tags: ['Payments'],
-        summary: 'Save (create or overwrite) payment plan',
+        summary: 'Save payment plan (per-installment merge)',
         description:
-          '**Sales, account, or admin.** Upserts one payment plan per inquiry. Upload proofs first via POST .../uploads, then include the returned `paymentProofUrl` per installment. `installments.length` must equal `numberOfInstallments`.',
+          '**Sales, account, or admin.** Upserts one payment plan per inquiry. Installments are **merged per row** by `_id` (paymentId): re-send existing rows with their `_id` to update, omit `_id` for new rows. VERIFIED installments are **locked** — editing or removing one returns **409**. New/edited rows are saved as PENDING. Upload proofs first via POST .../uploads, then include the returned `paymentProofUrl` per installment. `installments.length` must equal `numberOfInstallments`.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -2633,6 +2741,7 @@ const spec = {
           401: { description: 'Authentication required' },
           403: { description: 'Forbidden (requires sales, account, or admin)' },
           404: { description: 'Inquiry not found' },
+          409: { description: 'A VERIFIED installment was edited or removed (locked)' },
           422: { description: 'Validation failed' },
         },
       },

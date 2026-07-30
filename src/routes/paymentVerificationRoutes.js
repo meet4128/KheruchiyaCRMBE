@@ -19,13 +19,23 @@ router.get(
   paymentController.getUnverifiedPayments
 );
 
-// Account-team verify/un-verify of an inquiry's payment plan. Verifying is the gate
-// that lets sales mark the amendment as won (see amendmentService.finalizeAmendment).
+// Account-team verify/un-verify of an inquiry's payment plan (applies to every
+// installment at once). Verifying is the gate that lets sales mark the amendment
+// as won (see amendmentService.finalizeAmendment).
 router.patch(
   '/:inquiryId/verify',
   ...accountOrAdmin,
   validatePaymentVerification,
   paymentController.verifyPayment
+);
+
+// Account-team verify/un-verify of a SINGLE installment (paymentId = installment _id).
+// A verified installment becomes locked from further sales edits.
+router.patch(
+  '/:inquiryId/installments/:installmentId/verify',
+  ...accountOrAdmin,
+  validatePaymentVerification,
+  paymentController.verifyInstallment
 );
 
 module.exports = router;

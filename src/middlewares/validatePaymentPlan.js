@@ -6,6 +6,13 @@ const { messages } = require('../locales');
 const t = messages.validation.payment;
 
 const installmentSchema = Joi.object({
+  // Stable paymentId of an existing installment (Mongo _id). Present when the
+  // client is re-saving a row it already has; omitted for newly added rows.
+  _id: Joi.string()
+    .hex()
+    .length(24)
+    .optional()
+    .messages({ 'string.hex': t.paymentIdInvalid, 'string.length': t.paymentIdInvalid }),
   amount: Joi.number().min(0).required().messages({
     'any.required': t.installmentAmountRequired,
     'number.base': t.installmentAmountRequired,

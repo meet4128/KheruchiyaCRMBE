@@ -43,6 +43,22 @@ const verifyPayment = asyncHandler(async (req, res) => {
   });
 });
 
+const verifyInstallment = asyncHandler(async (req, res) => {
+  const { inquiryId, installmentId } = req.params;
+  const userId = req.user?.id;
+  const paymentPlan = await paymentService.verifyInstallment(
+    inquiryId,
+    installmentId,
+    req.body.verified,
+    userId
+  );
+
+  res.status(200).json({
+    status: 'success',
+    data: { paymentPlan },
+  });
+});
+
 const uploadPaymentProof = asyncHandler(async (req, res) => {
   const { inquiryId } = req.params;
   if (!req.file) {
@@ -73,5 +89,6 @@ module.exports = {
   getPaymentPlan,
   getUnverifiedPayments,
   verifyPayment,
+  verifyInstallment,
   uploadPaymentProof,
 };

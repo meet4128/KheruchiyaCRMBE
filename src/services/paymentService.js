@@ -2,12 +2,91 @@ const mongoose = require('mongoose');
 const PaymentPlan = require('../models/PaymentPlan');
 const Inquiry = require('../models/Inquiry');
 const AppError = require('../utils/AppError');
+const { PAYMENT_VERIFICATION_STATUS } = require('../constants/paymentVerificationStatus');
 const { messages } = require('../locales');
 
 const assertValidObjectId = (id, message) => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw new AppError(message || messages.errors.invalidIdOrFormat, 400);
   }
+};
+
+/** True when every installment has been verified (empty list is not "verified"). */
+const areAllInstallmentsVerified = (installments = []) =>
+  installments.length > 0 &&
+  installments.every((i) => i.verificationStatus === PAYMENT_VERIFICATION_STATUS.VERIFIED);
+
+// Material fields of an installment (verification metadata excluded). A change to
+// any of these on a VERIFIED row is rejected — a verified installment is locked.
+const normalizeDate = (v) => (v ? new Date(v).getTime() : null);
+const normalizeStr = (v) => (v === undefined || v === null ? '' : String(v));
+
+const installmentMaterialChanged = (current, incoming) =>
+  Number(current.amount) !== Number(incoming.amount) ||
+  normalizeDate(current.dueDate) !== normalizeDate(incoming.dueDate) ||
+  normalizeDate(current.receivedDate) !== normalizeDate(incoming.receivedDate) ||
+  normalizeStr(current.mode) !== normalizeStr(incoming.mode) ||
+  normalizeStr(current.status) !== normalizeStr(incoming.status) ||
+  normalizeStr(current.paymentProofUrl) !== normalizeStr(incoming.paymentProofUrl);
+
+/**
+ * Merges the incoming installment list onto the stored one, preserving each row's
+ * stable paymentId (_id) and its verification state:
+ *  - VERIFIED rows are locked: they must be re-sent unchanged, else 409.
+ *  - PENDING rows are updated in place and stay PENDING.
+ *  - Rows without a known _id are added fresh as PENDING.
+ * Removing a VERIFIED row (omitting its _id from the payload) is also a 409.
+ */
+const mergeInstallments = (existingInstallments = [], incomingInstallments = []) => {
+  const existingById = new Map(existingInstallments.map((i) => [String(i._id), i]));
+  const seenIds = new Set();
+
+  const merged = incomingInstallments.map((incoming) => {
+    const id = incoming._id ? String(incoming._id) : null;
+    const current = id ? existingById.get(id) : null;
+
+    if (current) {
+      seenIds.add(id);
+      if (current.verificationStatus === PAYMENT_VERIFICATION_STATUS.VERIFIED) {
+        if (installmentMaterialChanged(current, incoming)) {
+          throw new AppError(messages.errors.verifiedInstallmentLocked, 409);
+        }
+        // Locked and unchanged — keep the stored row verbatim (status/audit intact).
+        return current;
+      }
+      // Pending existing row — apply the sales edits, keep id + PENDING state.
+      return {
+        _id: current._id,
+        amount: incoming.amount,
+        dueDate: incoming.dueDate,
+        receivedDate: incoming.receivedDate,
+        mode: incoming.mode,
+        status: incoming.status,
+        paymentProofUrl: incoming.paymentProofUrl,
+        verificationStatus: PAYMENT_VERIFICATION_STATUS.PENDING,
+      };
+    }
+
+    // New row (no id, or an id we don't recognise) — fresh PENDING installment.
+    return {
+      amount: incoming.amount,
+      dueDate: incoming.dueDate,
+      receivedDate: incoming.receivedDate,
+      mode: incoming.mode,
+      status: incoming.status,
+      paymentProofUrl: incoming.paymentProofUrl,
+      verificationStatus: PAYMENT_VERIFICATION_STATUS.PENDING,
+    };
+  });
+
+  // A verified row that the payload dropped is a forbidden removal.
+  for (const [id, inst] of existingById) {
+    if (inst.verificationStatus === PAYMENT_VERIFICATION_STATUS.VERIFIED && !seenIds.has(id)) {
+      throw new AppError(messages.errors.verifiedInstallmentLocked, 409);
+    }
+  }
+
+  return merged;
 };
 
 const loadInquiry = async (inquiryId) => {
@@ -20,8 +99,12 @@ const loadInquiry = async (inquiryId) => {
 };
 
 /**
- * Create or overwrite the payment plan for an inquiry (one plan per inquiry).
- * The full installment list is replaced on every save.
+ * Create or update the payment plan for an inquiry (one plan per inquiry).
+ *
+ * Installments are merged per-row rather than wholesale-replaced: each keeps its
+ * stable paymentId (_id) and verification state. VERIFIED installments are locked
+ * (editing/removing one is a 409); PENDING and new rows are saved as PENDING.
+ * The plan-level `verified` roll-up is derived from the merged installments.
  *
  * @param {string} inquiryId
  * @param {object} payload validated payment-plan body
@@ -30,6 +113,10 @@ const loadInquiry = async (inquiryId) => {
 const savePaymentPlan = async (inquiryId, payload, userId) => {
   const inquiry = await loadInquiry(inquiryId);
 
+  const existing = await PaymentPlan.findOne({ inquiryId: inquiry._id }).lean();
+  const installments = mergeInstallments(existing?.installments, payload.installments);
+  const verified = areAllInstallmentsVerified(installments);
+
   const update = {
     inquiryId: inquiry._id,
     travelDate: payload.travelDate,
@@ -37,13 +124,12 @@ const savePaymentPlan = async (inquiryId, payload, userId) => {
     totalAmount: payload.totalAmount,
     numberOfInstallments: payload.numberOfInstallments,
     paymentReceivedTillNow: payload.paymentReceivedTillNow,
-    installments: payload.installments,
+    installments,
     updatedBy: userId,
-    // Any sales submit/update sends the plan (back) to the account team's unverified
-    // queue; account verification is applied via the dedicated verify endpoint.
-    verified: false,
-    verifiedAt: null,
-    verifiedBy: '',
+    // Roll-up derived from the merged installments (see areAllInstallmentsVerified).
+    verified,
+    verifiedAt: verified ? existing?.verifiedAt || new Date() : null,
+    verifiedBy: verified ? existing?.verifiedBy || userId : '',
   };
 
   const plan = await PaymentPlan.findOneAndUpdate(
@@ -73,9 +159,11 @@ const getPaymentPlan = async (inquiryId) => {
 };
 
 /**
- * Account-team verification of an inquiry's payment plan. Verifying (verified=true)
- * is the gate sales needs before an amendment can be marked as won; un-verifying
- * (verified=false) sends the plan back into the account "Unverified" queue.
+ * Account-team verification of an inquiry's payment plan, applied to EVERY
+ * installment at once ("verify all" / "un-verify all"). Verifying is the gate
+ * sales needs before an amendment can be marked as won; un-verifying sends the
+ * plan back into the account "Unverified" queue. For a single row use
+ * verifyInstallment instead.
  *
  * @param {string} inquiryId
  * @param {boolean} verified
@@ -84,20 +172,67 @@ const getPaymentPlan = async (inquiryId) => {
 const verifyPaymentPlan = async (inquiryId, verified, userId) => {
   await loadInquiry(inquiryId);
 
-  const update = verified
-    ? { verified: true, verifiedAt: new Date(), verifiedBy: userId }
-    : { verified: false, verifiedAt: null, verifiedBy: '' };
-
-  const plan = await PaymentPlan.findOneAndUpdate(
-    { inquiryId },
-    { $set: update },
-    { new: true, runValidators: true }
-  ).lean();
-
+  const plan = await PaymentPlan.findOne({ inquiryId });
   if (!plan) {
     throw new AppError(messages.errors.paymentPlanNotFound, 404);
   }
-  return plan;
+
+  const now = new Date();
+  plan.installments.forEach((inst) => {
+    inst.verificationStatus = verified
+      ? PAYMENT_VERIFICATION_STATUS.VERIFIED
+      : PAYMENT_VERIFICATION_STATUS.PENDING;
+    inst.verifiedAt = verified ? now : undefined;
+    inst.verifiedBy = verified ? userId : '';
+  });
+
+  const allVerified = areAllInstallmentsVerified(plan.installments);
+  plan.verified = allVerified;
+  plan.verifiedAt = allVerified ? now : null;
+  plan.verifiedBy = allVerified ? userId : '';
+
+  await plan.save();
+  return plan.toObject();
+};
+
+/**
+ * Account-team verification of a SINGLE installment (paymentId = installment _id).
+ * Verifying locks that installment from further edits; un-verifying returns it to
+ * PENDING. The plan-level `verified` roll-up is recomputed from all installments.
+ *
+ * @param {string} inquiryId
+ * @param {string} installmentId the installment's _id (paymentId)
+ * @param {boolean} verified
+ * @param {string} userId account-role user performing the action
+ */
+const verifyInstallment = async (inquiryId, installmentId, verified, userId) => {
+  await loadInquiry(inquiryId);
+  assertValidObjectId(installmentId, messages.errors.installmentNotFound);
+
+  const plan = await PaymentPlan.findOne({ inquiryId });
+  if (!plan) {
+    throw new AppError(messages.errors.paymentPlanNotFound, 404);
+  }
+
+  const installment = plan.installments.id(installmentId);
+  if (!installment) {
+    throw new AppError(messages.errors.installmentNotFound, 404);
+  }
+
+  const now = new Date();
+  installment.verificationStatus = verified
+    ? PAYMENT_VERIFICATION_STATUS.VERIFIED
+    : PAYMENT_VERIFICATION_STATUS.PENDING;
+  installment.verifiedAt = verified ? now : undefined;
+  installment.verifiedBy = verified ? userId : '';
+
+  const allVerified = areAllInstallmentsVerified(plan.installments);
+  plan.verified = allVerified;
+  plan.verifiedAt = allVerified ? now : null;
+  plan.verifiedBy = allVerified ? userId : '';
+
+  await plan.save();
+  return plan.toObject();
 };
 
 // Client-facing sort keys → real plan fields (allowlisted to avoid injection).
@@ -131,7 +266,8 @@ const getUnverifiedPayments = async (queryParams = {}) => {
   const safeSort = { [sortKey]: direction, _id: 1 };
 
   const pipeline = [
-    { $match: { verified: { $ne: true } } },
+    // A plan needs attention while any of its installments is still PENDING.
+    { $match: { 'installments.verificationStatus': PAYMENT_VERIFICATION_STATUS.PENDING } },
     {
       $lookup: {
         from: 'inquiries',
@@ -217,6 +353,7 @@ module.exports = {
   savePaymentPlan,
   getPaymentPlan,
   verifyPaymentPlan,
+  verifyInstallment,
   getUnverifiedPayments,
   loadInquiry,
 };

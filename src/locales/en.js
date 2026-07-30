@@ -181,6 +181,7 @@ module.exports = {
       installmentsCountMismatch:
         'Number of installment rows must match the selected number of installments',
       installmentAmountRequired: 'Installment amount is required',
+      paymentIdInvalid: 'paymentId (_id) must be a valid 24-character identifier',
       modeInvalid: 'Payment mode must be Cash, UPI, or Cheque',
       proofUrlInvalid: 'paymentProofUrl must be a path returned from POST .../payment-plan/uploads',
       proofFileRequired: 'No file uploaded. Use field name "file".',
@@ -246,6 +247,9 @@ module.exports = {
     amendmentSessionNotFound: 'Active amendment session not found or already finalized',
     amendmentSessionFinalized: 'This chat session is finalized; start a new session',
     paymentPlanNotFound: 'Payment plan not found for this inquiry',
+    installmentNotFound: 'Installment not found for this payment plan',
+    verifiedInstallmentLocked:
+      'A verified installment cannot be edited or removed. Ask the account team to un-verify it first.',
     paymentNotVerified:
       'Payment must be verified by the account team before this amendment can be marked as won',
     somethingWentWrong: 'Something went wrong',
