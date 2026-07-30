@@ -33,6 +33,16 @@ const flightSegmentSchema = Joi.object({
     city: Joi.string().required().trim(),
   }).required(),
   departureDate: Joi.date().required(),
+  // Optional flexible-window end. Absent → exact single-day departure. When
+  // present it must be on or after departureDate (window start).
+  departureDateEnd: Joi.date()
+    .optional()
+    .allow('')
+    .empty('')
+    .min(Joi.ref('departureDate'))
+    .messages({
+      'date.min': t.departureEndBeforeStart,
+    }),
   travellerCount: Joi.number().integer().min(1).required(),
   travelClass: Joi.string().required().trim(),
 });

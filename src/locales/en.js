@@ -22,6 +22,7 @@ module.exports = {
       airTicketForbidden: 'airTicket is not allowed when typeOfBooking is "Hotel Booking"',
       hotelBookingRequired: 'hotelBooking is required when typeOfBooking is "Hotel Booking"',
       hotelBookingForbidden: 'hotelBooking is not allowed when typeOfBooking is "Flight Booking"',
+      departureEndBeforeStart: 'departureDateEnd must be on or after departureDate',
       checkOutBeforeCheckIn: 'checkOutDate must be on or after checkInDate',
       budgetDigitsOnly: 'Budget must contain digits only',
       budgetMaxLessThanMin: 'budgetMax must be greater than or equal to budgetMin',

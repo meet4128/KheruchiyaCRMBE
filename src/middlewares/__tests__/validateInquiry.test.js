@@ -290,4 +290,98 @@ describe('validateInquiry', () => {
     expect(res.status).toHaveBeenCalledWith(422);
     expect(next).not.toHaveBeenCalled();
   });
+
+  // ─── Air Ticket flexible travel window (departureDateEnd) ────────────────────
+  const flightBody = (segments) => ({
+    ...validBody,
+    typeOfBooking: 'Flight Booking',
+    airTicket: {
+      bookingType: 'ONE_WAY',
+      flightSegments: segments,
+      remark: 'x',
+    },
+  });
+
+  const segment = (overrides = {}) => ({
+    from: { code: 'AMD', city: 'Ahmedabad' },
+    to: { code: 'DXB', city: 'Dubai' },
+    departureDate: '2026-08-07T00:00:00.000Z',
+    travellerCount: 2,
+    travelClass: 'Economy',
+    ...overrides,
+  });
+
+  it('calls next() for a One-Way segment with a valid departureDateEnd window', () => {
+    const req = {
+      body: flightBody([segment({ departureDateEnd: '2026-08-09T00:00:00.000Z' })]),
+    };
+    const res = {};
+    const next = jest.fn();
+
+    validateInquiry(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(req.body.airTicket.flightSegments[0].departureDateEnd).toEqual(
+      new Date('2026-08-09T00:00:00.000Z')
+    );
+  });
+
+  it('calls next() when departureDateEnd is omitted (exact single-day departure)', () => {
+    const req = { body: flightBody([segment()]) };
+    const res = {};
+    const next = jest.fn();
+
+    validateInquiry(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(req.body.airTicket.flightSegments[0].departureDateEnd).toBeUndefined();
+  });
+
+  it('returns 422 when departureDateEnd is before departureDate', () => {
+    const req = {
+      body: flightBody([segment({ departureDateEnd: '2026-08-05T00:00:00.000Z' })]),
+    };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    const next = jest.fn();
+
+    validateInquiry(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('calls next() for a Round-Trip (two segments, no departureDateEnd) — regression', () => {
+    const req = {
+      body: {
+        ...flightBody([
+          segment(),
+          segment({
+            from: { code: 'DXB', city: 'Dubai' },
+            to: { code: 'AMD', city: 'Ahmedabad' },
+            departureDate: '2026-08-14T00:00:00.000Z',
+          }),
+        ]),
+        airTicket: {
+          bookingType: 'ROUND_TRIP',
+          flightSegments: [
+            segment(),
+            segment({
+              from: { code: 'DXB', city: 'Dubai' },
+              to: { code: 'AMD', city: 'Ahmedabad' },
+              departureDate: '2026-08-14T00:00:00.000Z',
+            }),
+          ],
+          remark: 'x',
+        },
+      },
+    };
+    const res = {};
+    const next = jest.fn();
+
+    validateInquiry(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(req.body.airTicket.flightSegments).toHaveLength(2);
+    expect(req.body.airTicket.flightSegments[0].departureDateEnd).toBeUndefined();
+  });
 });
