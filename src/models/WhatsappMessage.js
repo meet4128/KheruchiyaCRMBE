@@ -13,6 +13,10 @@ const whatsappMessageSchema = new mongoose.Schema(
       trim: true,
       match: /^\d{10,15}$/,
     },
+    /** Inquiry this message belongs to — stamped on send / inbound attribution */
+    inquiryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Inquiry' },
+    /** Amendment session active when the message was attributed */
+    sessionId: { type: String, trim: true },
     type: {
       type: String,
       required: true,
@@ -41,6 +45,9 @@ whatsappMessageSchema.index({ wamid: 1 }, { unique: true });
 
 /** Conversation list + thread queries */
 whatsappMessageSchema.index({ peerPhone: 1, createdAt: -1 });
+
+/** Per-inquiry isolated thread queries (scoped Q&A chat) */
+whatsappMessageSchema.index({ peerPhone: 1, inquiryId: 1, createdAt: -1 });
 
 const WhatsappMessage = mongoose.model('WhatsappMessage', whatsappMessageSchema);
 

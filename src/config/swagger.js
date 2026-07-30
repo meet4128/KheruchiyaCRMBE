@@ -3364,7 +3364,7 @@ const spec = {
         tags: ['WhatsApp'],
         summary: 'List messages in a conversation',
         description:
-          'Returns paginated messages for a single `peerPhone` (E.164 digits, no +). Default sort is oldest first (`createdAt`).',
+          "Returns paginated messages for a single `peerPhone` (E.164 digits, no +). Default sort is oldest first (`createdAt`). Pass `inquiryId` to return strictly that inquiry's messages (per-inquiry isolated Q&A chat); omit it for the full phone thread (global inbox).",
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -3384,6 +3384,13 @@ const spec = {
             in: 'query',
             schema: { type: 'string', default: 'createdAt', example: '-createdAt' },
             description: 'Sort field: createdAt or waTimestamp; prefix - for descending',
+          },
+          {
+            name: 'inquiryId',
+            in: 'query',
+            schema: { type: 'string' },
+            description:
+              'Inquiry (booking) id. When provided, returns only messages stamped with this inquiry.',
           },
         ],
         responses: {

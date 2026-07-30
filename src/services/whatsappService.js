@@ -168,10 +168,12 @@ const applyDeliveryStatuses = async (statuses) => {
   }
 };
 
-const buildWhatsappMessageFields = (m) => ({
+const buildWhatsappMessageFields = (m, active) => ({
   wamid: m.id,
   direction: WHATSAPP_MESSAGE_DIRECTION.INBOUND,
   peerPhone: m.from,
+  inquiryId: active?.inquiryId,
+  sessionId: active?.sessionId,
   type: m.type,
   text: m.text || '',
   mediaUrl: m.mediaUrl,
@@ -180,10 +182,10 @@ const buildWhatsappMessageFields = (m) => ({
   waTimestamp: waTimestampFromUnix(m.timestamp),
 });
 
-const persistGlobalWhatsappMessage = async (m) => {
+const persistGlobalWhatsappMessage = async (m, active) => {
   await WhatsappMessage.findOneAndUpdate(
     { wamid: m.id },
-    { $setOnInsert: buildWhatsappMessageFields(m) },
+    { $setOnInsert: buildWhatsappMessageFields(m, active) },
     { upsert: true }
   );
 };
@@ -237,7 +239,7 @@ const persistInboundMessages = async (messages) => {
   for (const m of messages) {
     const active = await amendmentService.findActiveSessionByPeer(m.from);
     const enriched = await enrichInboundMedia(m, active);
-    await persistGlobalWhatsappMessage(enriched);
+    await persistGlobalWhatsappMessage(enriched, active);
     await persistInboundToAmendmentSession(enriched, active);
   }
 };
@@ -250,6 +252,8 @@ const persistOutboundMessage = async ({
   mediaUrl,
   fileName,
   mimeType,
+  inquiryId,
+  sessionId,
 }) => {
   await WhatsappMessage.findOneAndUpdate(
     { wamid },
@@ -258,6 +262,8 @@ const persistOutboundMessage = async ({
         wamid,
         direction: WHATSAPP_MESSAGE_DIRECTION.OUTBOUND,
         peerPhone: to,
+        inquiryId,
+        sessionId,
         type,
         text: text || '',
         mediaUrl,
@@ -456,6 +462,8 @@ const sendMessage = async ({
       type,
       mediaUrl,
       fileName,
+      inquiryId,
+      sessionId,
     });
     if (sessionId && inquiryId) {
       const amendmentType =
@@ -543,7 +551,7 @@ const getConversations = async (queryParams = {}) => {
 const MESSAGE_SORT_FIELDS = ['createdAt', 'waTimestamp'];
 
 const getMessagesByPeer = async (peerPhone, queryParams = {}) => {
-  const { page = 1, limit = 50, sort = 'createdAt' } = queryParams;
+  const { page = 1, limit = 50, sort = 'createdAt', inquiryId } = queryParams;
 
   const pageNum = Math.max(parseInt(page, 10) || 1, 1);
   const limitNum = Math.min(Math.max(parseInt(limit, 10) || 50, 1), MAX_LIMIT);
@@ -554,7 +562,12 @@ const getMessagesByPeer = async (peerPhone, queryParams = {}) => {
   const field = rawSort.replace(/^-/, '').trim() || 'createdAt';
   const safeSort = MESSAGE_SORT_FIELDS.includes(field) ? { [field]: direction } : { createdAt: 1 };
 
+  // When inquiryId is provided, return strictly that inquiry's messages;
+  // without it, return the full phone thread (global inbox use only).
   const filter = { peerPhone };
+  if (inquiryId) {
+    filter.inquiryId = inquiryId;
+  }
 
   const [items, totalItems] = await Promise.all([
     WhatsappMessage.find(filter).skip(skip).limit(limitNum).sort(safeSort).lean(),

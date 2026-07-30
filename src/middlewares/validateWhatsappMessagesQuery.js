@@ -1,4 +1,5 @@
 const Joi = require('joi');
+const mongoose = require('mongoose');
 const { messages } = require('../locales');
 
 const MAX_LIMIT = 100;
@@ -7,6 +8,19 @@ const messagesQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).optional().default(1),
   limit: Joi.number().integer().min(1).max(MAX_LIMIT).optional().default(50),
   sort: Joi.string().trim().optional().default('createdAt'),
+  inquiryId: Joi.string()
+    .trim()
+    .custom((value, helpers) => {
+      if (!value) return value;
+      if (!mongoose.Types.ObjectId.isValid(value)) {
+        return helpers.error('any.invalid');
+      }
+      return value;
+    })
+    .optional()
+    .messages({
+      'any.invalid': messages.validation.whatsapp.inquiryIdInvalid,
+    }),
 })
   .options({ stripUnknown: true })
   .messages({
