@@ -2,11 +2,14 @@ const mongoose = require('mongoose');
 const Inquiry = require('../models/Inquiry');
 const amendmentService = require('./amendmentService');
 const memberService = require('./memberService');
+const counterService = require('./counterService');
 const AppError = require('../utils/AppError');
 const { getChecklistPriorityDefaults } = require('../constants/checklistPriority');
 const { INQUIRY_STATUS_VALUES } = require('../constants/inquiryStatus');
+const { INQUIRY_NUMBER_COUNTER_ID } = require('../constants/inquiryNumber');
 const { AUTH_ROLE } = require('../constants/authRole');
 const { applyChecklistDueDates } = require('../utils/checklistDueDate');
+const { buildInquiryNumber } = require('../utils/inquiryNumber');
 const { messages } = require('../locales');
 
 /**
@@ -40,8 +43,19 @@ const createInquiry = async (payload) => {
   // Reference number and phone number are intentionally NOT unique: the same
   // client (ref/phone) may raise multiple inquiries across hotel and air ticket
   // bookings, so duplicates are allowed.
+
+  // Assign a human-readable inquiry number once, at creation. The sequence is a
+  // single shared, ever-increasing counter (never resets); the atomic $inc makes
+  // concurrent creates get distinct numbers. Prefix + FY come from the payload.
+  const seq = await counterService.getNextSequence(INQUIRY_NUMBER_COUNTER_ID);
+  const inquiryNumber = buildInquiryNumber({
+    typeOfBooking: payload.typeOfBooking,
+    seq,
+  });
+
   const payloadWithDueDates = {
     ...payload,
+    inquiryNumber,
     checklist: applyChecklistDueDates(payload.checklist),
   };
 

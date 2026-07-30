@@ -134,6 +134,9 @@ const checklistItemSchema = new mongoose.Schema(
 
 const inquirySchema = new mongoose.Schema(
   {
+    // Human-readable unique inquiry number (PREFIX/FY/SEQ, e.g. FT/2627/001).
+    // Assigned once at creation; legacy records may leave it absent/null.
+    inquiryNumber: { type: String, trim: true },
     // Inquiry Form fields
     title: { type: String, required: true, trim: true },
     phoneNumber: { type: contactNumberSchema, required: true },
@@ -170,6 +173,9 @@ const inquirySchema = new mongoose.Schema(
 );
 
 // ─── Performance indexes (industry standard) ─────────────────────────────────
+
+/** Inquiry number: unique safety net. Sparse so legacy docs without it are allowed. */
+inquirySchema.index({ inquiryNumber: 1 }, { unique: true, sparse: true });
 
 /** Email: lookup / search by contact */
 inquirySchema.index({ email: 1 }, { sparse: true });

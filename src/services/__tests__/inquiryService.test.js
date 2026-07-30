@@ -20,8 +20,13 @@ jest.mock('../memberService', () => ({
   getMemberById: jest.fn(),
 }));
 
+jest.mock('../counterService', () => ({
+  getNextSequence: jest.fn().mockResolvedValue(1),
+}));
+
 const Inquiry = require('../../models/Inquiry');
 const memberService = require('../memberService');
+const counterService = require('../counterService');
 
 const VALID_INQUIRY_ID = '507f1f77bcf86cd799439011';
 const VALID_MEMBER_ID = '507f191e810c19729de860ea';
@@ -54,7 +59,25 @@ describe('inquiryService', () => {
       expect(result).toEqual(saved);
       // Reference number is no longer looked up before creating.
       expect(Inquiry.findOne).not.toHaveBeenCalled();
-      expect(Inquiry.create).toHaveBeenCalledWith(validPayload);
+      expect(Inquiry.create).toHaveBeenCalledWith(expect.objectContaining(validPayload));
+    });
+
+    it('assigns an inquiryNumber from the shared atomic counter', async () => {
+      counterService.getNextSequence.mockResolvedValueOnce(7);
+      Inquiry.create.mockImplementation((payload) =>
+        Promise.resolve({ _id: 'new-id', ...payload })
+      );
+
+      // typeOfBooking 'Flight Booking' → prefix FT; seq 7 → padded '007'.
+      const payload = { ...validPayload, typeOfBooking: 'Flight Booking' };
+      await inquiryService.createInquiry(payload);
+
+      expect(counterService.getNextSequence).toHaveBeenCalledWith('inquiryNumber');
+      expect(Inquiry.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          inquiryNumber: expect.stringMatching(/^FT\/\d{4}\/007$/),
+        })
+      );
     });
 
     it('auto-sets checklist dueDate from priority when dueDate is omitted', async () => {
