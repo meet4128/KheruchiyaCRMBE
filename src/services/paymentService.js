@@ -146,16 +146,20 @@ const savePaymentPlan = async (inquiryId, payload, userId) => {
     }
   ).lean();
 
-  return plan;
+  // Surface the human-readable inquiry number (PREFIX/FY/SEQ) alongside the plan
+  // so the client can label it without a second inquiry lookup. Legacy inquiries
+  // may not have one — leave it absent in that case.
+  return { ...plan, inquiryNumber: inquiry.inquiryNumber };
 };
 
 const getPaymentPlan = async (inquiryId) => {
-  await loadInquiry(inquiryId);
+  const inquiry = await loadInquiry(inquiryId);
   const plan = await PaymentPlan.findOne({ inquiryId }).lean();
   if (!plan) {
     throw new AppError(messages.errors.paymentPlanNotFound, 404);
   }
-  return plan;
+  // Keep parity with savePaymentPlan: expose the inquiry number on reload too.
+  return { ...plan, inquiryNumber: inquiry.inquiryNumber };
 };
 
 /**
@@ -301,6 +305,9 @@ const getUnverifiedPayments = async (queryParams = {}) => {
       _id: 0,
       paymentPlanId: '$_id',
       inquiryId: '$inquiryId',
+      // Human-readable inquiry number (PREFIX/FY/SEQ), matching the save/get
+      // payment-plan responses. Legacy inquiries without one project as null.
+      inquiryNumber: '$inquiry.inquiryNumber',
       travelDate: '$travelDate',
       bookingType: '$bookingType',
       totalAmount: '$totalAmount',

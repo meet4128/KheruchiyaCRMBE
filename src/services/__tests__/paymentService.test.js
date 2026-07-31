@@ -17,8 +17,10 @@ const ID_A = '507f191e810c19729de860ea';
 const ID_B = '507f191e810c19729de860eb';
 
 // loadInquiry() → Inquiry.findById(id).lean()
-const mockInquiryExists = () =>
-  Inquiry.findById.mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: INQUIRY_ID }) });
+const mockInquiryExists = (extra = {}) =>
+  Inquiry.findById.mockReturnValue({
+    lean: jest.fn().mockResolvedValue({ _id: INQUIRY_ID, ...extra }),
+  });
 
 // savePaymentPlan reads the existing plan via .findOne().lean()
 const mockExistingPlanLean = (plan) =>
@@ -174,6 +176,34 @@ describe('paymentService', () => {
 
       await paymentService.savePaymentPlan(INQUIRY_ID, payload, 'user-1');
       expect(savedVerified()).toBe(true);
+    });
+
+    it("returns the inquiry's inquiryNumber alongside the saved plan", async () => {
+      mockInquiryExists({ inquiryNumber: 'FT/2627/001' });
+      mockExistingPlanLean(null);
+      mockSaveResult();
+
+      const result = await paymentService.savePaymentPlan(INQUIRY_ID, basePayload, 'user-1');
+      expect(result.inquiryNumber).toBe('FT/2627/001');
+    });
+  });
+
+  describe('getPaymentPlan', () => {
+    it("returns the plan with the inquiry's inquiryNumber", async () => {
+      mockInquiryExists({ inquiryNumber: 'HT/2627/002' });
+      PaymentPlan.findOne.mockReturnValue({
+        lean: jest.fn().mockResolvedValue({ _id: 'plan-1', installments: [] }),
+      });
+
+      const result = await paymentService.getPaymentPlan(INQUIRY_ID);
+      expect(result).toMatchObject({ _id: 'plan-1', inquiryNumber: 'HT/2627/002' });
+    });
+
+    it('throws 404 when no plan exists', async () => {
+      PaymentPlan.findOne.mockReturnValue({ lean: jest.fn().mockResolvedValue(null) });
+      await expect(paymentService.getPaymentPlan(INQUIRY_ID)).rejects.toMatchObject({
+        statusCode: 404,
+      });
     });
   });
 
