@@ -38,6 +38,9 @@ module.exports = {
       statusRequired: 'status is required',
       statusInvalid: 'status must be PENDING, IN_PROGRESS, FOLLOWUP, COMPLETED, or CANCELLED',
     },
+    qnaRead: {
+      readAtInvalid: 'readAt must be a valid ISO 8601 date-time',
+    },
     inquiryQuery: {
       invalidPageLimit: 'Page and limit must be at least 1',
       limitMax: 'Limit must not exceed 100',

@@ -13,8 +13,18 @@ jest.mock('../../models/Inquiry', () => {
     find: jest.fn(() => chain),
     findByIdAndUpdate: jest.fn(),
     countDocuments: jest.fn().mockResolvedValue(0),
+    exists: jest.fn().mockResolvedValue({ _id: 'x' }),
   };
 });
+
+jest.mock('../../models/WhatsappMessage', () => ({
+  aggregate: jest.fn().mockResolvedValue([]),
+}));
+
+jest.mock('../../models/QnaReadState', () => ({
+  collection: { name: 'qnareadstates' },
+  findOneAndUpdate: jest.fn().mockResolvedValue({}),
+}));
 
 jest.mock('../memberService', () => ({
   getMemberById: jest.fn(),
@@ -25,6 +35,8 @@ jest.mock('../counterService', () => ({
 }));
 
 const Inquiry = require('../../models/Inquiry');
+const WhatsappMessage = require('../../models/WhatsappMessage');
+const QnaReadState = require('../../models/QnaReadState');
 const memberService = require('../memberService');
 const counterService = require('../counterService');
 
@@ -185,6 +197,74 @@ describe('inquiryService', () => {
       await inquiryService.getAllInquiries({}, { role: 'admin', id: VALID_MEMBER_ID });
 
       expect(Inquiry.find).toHaveBeenCalledWith({});
+    });
+
+    it('attaches a per-user unreadCount to each item (0 when none)', async () => {
+      const chain = Inquiry.find();
+      chain.exec.mockResolvedValueOnce([
+        { _id: VALID_INQUIRY_ID, fullName: 'A' },
+        { _id: '507f1f77bcf86cd799439099', fullName: 'B' },
+      ]);
+      WhatsappMessage.aggregate.mockResolvedValueOnce([{ _id: VALID_INQUIRY_ID, count: 3 }]);
+
+      const result = await inquiryService.getAllInquiries(
+        {},
+        { role: 'admin', id: VALID_MEMBER_ID }
+      );
+
+      expect(result.items[0]).toMatchObject({ _id: VALID_INQUIRY_ID, unreadCount: 3 });
+      expect(result.items[1]).toMatchObject({ unreadCount: 0 });
+    });
+
+    it('defaults unreadCount to 0 without an authenticated caller', async () => {
+      const chain = Inquiry.find();
+      chain.exec.mockResolvedValueOnce([{ _id: VALID_INQUIRY_ID, fullName: 'A' }]);
+
+      const result = await inquiryService.getAllInquiries({});
+
+      expect(result.items[0].unreadCount).toBe(0);
+      expect(WhatsappMessage.aggregate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('markQnaRead', () => {
+    it('upserts the read marker and returns unreadCount 0', async () => {
+      const result = await inquiryService.markQnaRead(VALID_MEMBER_ID, VALID_INQUIRY_ID);
+
+      expect(QnaReadState.findOneAndUpdate).toHaveBeenCalledWith(
+        { userId: VALID_MEMBER_ID, inquiryId: VALID_INQUIRY_ID },
+        { $set: { lastReadAt: expect.any(Date) } },
+        expect.objectContaining({ upsert: true })
+      );
+      expect(result).toEqual({ inquiryId: VALID_INQUIRY_ID, unreadCount: 0 });
+    });
+
+    it('uses an explicit readAt when provided', async () => {
+      const readAt = '2026-07-31T10:00:00.000Z';
+
+      await inquiryService.markQnaRead(VALID_MEMBER_ID, VALID_INQUIRY_ID, readAt);
+
+      expect(QnaReadState.findOneAndUpdate).toHaveBeenCalledWith(
+        expect.any(Object),
+        { $set: { lastReadAt: new Date(readAt) } },
+        expect.any(Object)
+      );
+    });
+
+    it('throws 400 for an invalid inquiry id', async () => {
+      await expect(inquiryService.markQnaRead(VALID_MEMBER_ID, 'bad-id')).rejects.toMatchObject({
+        statusCode: 400,
+      });
+      expect(QnaReadState.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('throws 404 when the inquiry does not exist', async () => {
+      Inquiry.exists.mockResolvedValueOnce(null);
+
+      await expect(
+        inquiryService.markQnaRead(VALID_MEMBER_ID, VALID_INQUIRY_ID)
+      ).rejects.toMatchObject({ statusCode: 404 });
+      expect(QnaReadState.findOneAndUpdate).not.toHaveBeenCalled();
     });
   });
 

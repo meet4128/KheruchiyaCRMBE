@@ -5,6 +5,7 @@ const validateInquiryQuery = require('../middlewares/validateInquiryQuery');
 const validateInquiryPhoneQuery = require('../middlewares/validateInquiryPhoneQuery');
 const validateInquiryAssign = require('../middlewares/validateInquiryAssign');
 const validateInquiryStatus = require('../middlewares/validateInquiryStatus');
+const validateQnaRead = require('../middlewares/validateQnaRead');
 const authMiddleware = require('../middlewares/authMiddleware');
 const requireRoles = require('../middlewares/requireRoles');
 
@@ -43,6 +44,7 @@ router.patch(
   validateInquiryStatus,
   inquiryController.updateInquiryStatus
 );
+router.post('/:inquiryId/qna/read', authMiddleware, validateQnaRead, inquiryController.markQnaRead);
 router.use('/:inquiryId/amendments', amendmentRoutes);
 router.use('/:inquiryId/purchase-chats', purchaseTeamChatRoutes);
 router.use('/:inquiryId/payment-plan', paymentRoutes);

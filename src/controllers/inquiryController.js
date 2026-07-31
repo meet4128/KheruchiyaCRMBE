@@ -63,6 +63,19 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
   });
 });
 
+const markQnaRead = asyncHandler(async (req, res) => {
+  const result = await inquiryService.markQnaRead(
+    req.user?.id,
+    req.params.inquiryId,
+    req.body.readAt
+  );
+
+  res.status(200).json({
+    status: 'success',
+    data: result,
+  });
+});
+
 const getChecklistPriorityDefaults = asyncHandler(async (req, res) => {
   const priorities = inquiryService.getChecklistPriorityDefaults();
 
@@ -79,5 +92,6 @@ module.exports = {
   getInquiryById,
   assignInquiry,
   updateInquiryStatus,
+  markQnaRead,
   getChecklistPriorityDefaults,
 };

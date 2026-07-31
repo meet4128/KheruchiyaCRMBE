@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 const Inquiry = require('../models/Inquiry');
+const WhatsappMessage = require('../models/WhatsappMessage');
+const QnaReadState = require('../models/QnaReadState');
 const amendmentService = require('./amendmentService');
 const memberService = require('./memberService');
 const counterService = require('./counterService');
@@ -8,6 +10,7 @@ const { getChecklistPriorityDefaults } = require('../constants/checklistPriority
 const { INQUIRY_STATUS_VALUES } = require('../constants/inquiryStatus');
 const { INQUIRY_NUMBER_COUNTER_ID } = require('../constants/inquiryNumber');
 const { AUTH_ROLE } = require('../constants/authRole');
+const { WHATSAPP_MESSAGE_DIRECTION } = require('../constants/whatsappMessageDirection');
 const { applyChecklistDueDates } = require('../utils/checklistDueDate');
 const { buildInquiryNumber } = require('../utils/inquiryNumber');
 const { messages } = require('../locales');
@@ -28,6 +31,110 @@ const buildAssignmentScope = (authUser) => {
 
 /** Combines a base filter with an optional visibility scope. */
 const applyScope = (filter, scope) => (scope ? { $and: [filter, scope] } : filter);
+
+/**
+ * Attaches a per-user `unreadCount` to each inquiry item — the number of inbound
+ * (customer) WhatsApp Q&A messages that arrived after the user last opened that
+ * inquiry's Q&A. Never opened → epoch, so all inbound messages count.
+ *
+ * The count is computed in one aggregation over the WhatsappMessage collection,
+ * joining each message's inquiry to the caller's read marker. Items are returned
+ * with `unreadCount` defaulting to `0` (never null) so clients render without
+ * null checks. Outbound (agent) messages never count.
+ *
+ * @param {any[]} items - Inquiry documents (Mongoose docs or lean objects)
+ * @param {object|null} authUser - Authenticated caller ({ id })
+ * @returns {Promise<any[]>} Plain items each carrying an integer `unreadCount`
+ */
+const attachUnreadCounts = async (items, authUser) => {
+  const plainItems = items.map((item) =>
+    typeof item.toObject === 'function' ? item.toObject() : item
+  );
+
+  if (!authUser?.id || !mongoose.Types.ObjectId.isValid(authUser.id) || plainItems.length === 0) {
+    return plainItems.map((item) => ({ ...item, unreadCount: 0 }));
+  }
+
+  const inquiryIds = plainItems
+    .map((item) => item._id)
+    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    .map((id) => new mongoose.Types.ObjectId(String(id)));
+
+  if (inquiryIds.length === 0) {
+    return plainItems.map((item) => ({ ...item, unreadCount: 0 }));
+  }
+
+  const userId = new mongoose.Types.ObjectId(String(authUser.id));
+
+  const rows = await WhatsappMessage.aggregate([
+    { $match: { inquiryId: { $in: inquiryIds }, direction: WHATSAPP_MESSAGE_DIRECTION.INBOUND } },
+    {
+      $lookup: {
+        from: QnaReadState.collection.name,
+        let: { inquiryId: '$inquiryId' },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [{ $eq: ['$inquiryId', '$$inquiryId'] }, { $eq: ['$userId', userId] }],
+              },
+            },
+          },
+          { $project: { lastReadAt: 1 } },
+        ],
+        as: 'readState',
+      },
+    },
+    {
+      $addFields: {
+        // Message arrival time (waTimestamp), falling back to storage time.
+        messageAt: { $ifNull: ['$waTimestamp', '$createdAt'] },
+        // No marker yet → epoch, so every inbound message counts as unread.
+        lastReadAt: { $ifNull: [{ $arrayElemAt: ['$readState.lastReadAt', 0] }, new Date(0)] },
+      },
+    },
+    { $match: { $expr: { $gt: ['$messageAt', '$lastReadAt'] } } },
+    { $group: { _id: '$inquiryId', count: { $sum: 1 } } },
+  ]);
+
+  const countByInquiry = new Map(rows.map((row) => [String(row._id), row.count]));
+
+  return plainItems.map((item) => ({
+    ...item,
+    unreadCount: countByInquiry.get(String(item._id)) || 0,
+  }));
+};
+
+/**
+ * Marks an inquiry's Q&A as read for a user by upserting their `lastReadAt`
+ * marker. After this the inquiry's `unreadCount` for the user is `0` until a
+ * newer inbound message arrives. Called when the user opens the Q&A thread.
+ *
+ * @param {string} userId - Authenticated caller id
+ * @param {string} inquiryId - Inquiry (booking) id
+ * @param {string|Date} [readAt] - Optional explicit read time (defaults to now)
+ * @returns {Promise<{ inquiryId: string, unreadCount: number }>}
+ */
+const markQnaRead = async (userId, inquiryId, readAt) => {
+  if (!mongoose.Types.ObjectId.isValid(inquiryId)) {
+    throw new AppError(messages.errors.invalidIdOrFormat, 400);
+  }
+
+  const inquiry = await Inquiry.exists({ _id: inquiryId });
+  if (!inquiry) {
+    throw new AppError(messages.errors.inquiryNotFound, 404);
+  }
+
+  const lastReadAt = readAt ? new Date(readAt) : new Date();
+
+  await QnaReadState.findOneAndUpdate(
+    { userId, inquiryId },
+    { $set: { lastReadAt } },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+
+  return { inquiryId: String(inquiryId), unreadCount: 0 };
+};
 
 /** Allowed sort fields to prevent query injection */
 const ALLOWED_SORT_FIELDS = [
@@ -128,7 +235,7 @@ const getAllInquiries = async (queryParams = {}, authUser = null) => {
   const totalPages = Math.ceil(totalItems / limitNum) || 1;
 
   return {
-    items,
+    items: await attachUnreadCounts(items, authUser),
     page: pageNum,
     limit: limitNum,
     totalItems,
@@ -175,7 +282,7 @@ const getInquiriesByPhone = async (queryParams = {}, authUser = null) => {
   const totalPages = Math.ceil(totalItems / limitNum) || 1;
 
   return {
-    items,
+    items: await attachUnreadCounts(items, authUser),
     page: pageNum,
     limit: limitNum,
     totalItems,
@@ -270,5 +377,6 @@ module.exports = {
   getInquiryById,
   assignInquiry,
   updateInquiryStatus,
+  markQnaRead,
   getChecklistPriorityDefaults,
 };
