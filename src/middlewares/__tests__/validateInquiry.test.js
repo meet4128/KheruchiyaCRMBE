@@ -384,4 +384,70 @@ describe('validateInquiry', () => {
     expect(req.body.airTicket.flightSegments).toHaveLength(2);
     expect(req.body.airTicket.flightSegments[0].departureDateEnd).toBeUndefined();
   });
+
+  // Round-Trip is two segments: [0] outbound window, [1] return window. Each may
+  // independently carry departureDateEnd. Build one from optional per-segment ends.
+  const roundTripBody = (outboundEnd, returnEnd) => ({
+    ...validBody,
+    typeOfBooking: 'Flight Booking',
+    airTicket: {
+      bookingType: 'ROUND_TRIP',
+      flightSegments: [
+        segment(outboundEnd ? { departureDateEnd: outboundEnd } : {}),
+        segment({
+          from: { code: 'DXB', city: 'Dubai' },
+          to: { code: 'AMD', city: 'Ahmedabad' },
+          departureDate: '2026-08-14T00:00:00.000Z',
+          ...(returnEnd ? { departureDateEnd: returnEnd } : {}),
+        }),
+      ],
+      remark: 'x',
+    },
+  });
+
+  it('calls next() for a Round-Trip with both departure and return windows', () => {
+    const req = {
+      body: roundTripBody('2026-08-09T00:00:00.000Z', '2026-08-16T00:00:00.000Z'),
+    };
+    const res = {};
+    const next = jest.fn();
+
+    validateInquiry(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(req.body.airTicket.flightSegments[0].departureDateEnd).toEqual(
+      new Date('2026-08-09T00:00:00.000Z')
+    );
+    expect(req.body.airTicket.flightSegments[1].departureDateEnd).toEqual(
+      new Date('2026-08-16T00:00:00.000Z')
+    );
+  });
+
+  it('calls next() for a Round-Trip with a departure window and a single-day return', () => {
+    const req = { body: roundTripBody('2026-08-09T00:00:00.000Z', null) };
+    const res = {};
+    const next = jest.fn();
+
+    validateInquiry(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(req.body.airTicket.flightSegments[0].departureDateEnd).toEqual(
+      new Date('2026-08-09T00:00:00.000Z')
+    );
+    expect(req.body.airTicket.flightSegments[1].departureDateEnd).toBeUndefined();
+  });
+
+  it('returns 422 when a Round-Trip return window ends before its departureDate', () => {
+    const req = {
+      // Return segment departs 2026-08-14 but window end is 2026-08-10 (before start).
+      body: roundTripBody(null, '2026-08-10T00:00:00.000Z'),
+    };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    const next = jest.fn();
+
+    validateInquiry(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(next).not.toHaveBeenCalled();
+  });
 });

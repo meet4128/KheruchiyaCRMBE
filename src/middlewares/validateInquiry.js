@@ -33,8 +33,9 @@ const flightSegmentSchema = Joi.object({
     city: Joi.string().required().trim(),
   }).required(),
   departureDate: Joi.date().required(),
-  // Optional flexible-window end. Absent → exact single-day departure. When
-  // present it must be on or after departureDate (window start).
+  // Optional flexible-window end — accepted per segment for every booking type,
+  // including both Round-Trip segments. Absent → exact single-day departure.
+  // When present it must be on or after departureDate (window start).
   departureDateEnd: Joi.date()
     .optional()
     .allow('')

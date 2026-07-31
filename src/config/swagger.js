@@ -59,7 +59,19 @@ const options = {
                 city: { type: 'string', example: 'Dubai' },
               },
             },
-            departureDate: { type: 'string', format: 'date-time' },
+            departureDate: {
+              type: 'string',
+              format: 'date-time',
+              description:
+                'Travel window start (or the exact single day when departureDateEnd is omitted)',
+            },
+            departureDateEnd: {
+              type: 'string',
+              format: 'date-time',
+              nullable: true,
+              description:
+                'Optional flexible travel window end (inclusive). Must be on or after departureDate. Omit for an exact single-day departure. Applies to every booking type, including both Round-Trip segments.',
+            },
             travellerCount: { type: 'integer', minimum: 1 },
             travelClass: { type: 'string', example: 'Economy' },
           },

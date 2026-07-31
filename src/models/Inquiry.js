@@ -34,8 +34,9 @@ const flightSegmentSchema = new mongoose.Schema(
       city: { type: String, required: true, trim: true },
     },
     departureDate: { type: Date, required: true },
-    // Optional end of a flexible travel window (One-Way / Multi-city). Absent
-    // means an exact single-day departure; Round-Trip never sends it.
+    // Optional end of a flexible travel window, per segment and for every
+    // booking type (One-Way, Round-Trip outbound + return, Multi-city). Absent
+    // means an exact single-day departure.
     departureDateEnd: {
       type: Date,
       set: (v) => (v === '' || v === null ? undefined : v),
