@@ -18,7 +18,9 @@ const amendmentMessageSchema = new mongoose.Schema(
     mediaUrl: { type: String, trim: true },
     fileName: { type: String, trim: true },
     mimeType: { type: String, trim: true },
-    wamid: { type: String, trim: true, sparse: true },
+    // Index (unique + sparse) is declared explicitly below — keep it off the field
+    // definition too, or Mongoose warns "Duplicate schema index on {wamid:1}".
+    wamid: { type: String, trim: true },
     peerPhone: { type: String, trim: true },
     createdBy: { type: String, trim: true },
     waTimestamp: { type: Date },

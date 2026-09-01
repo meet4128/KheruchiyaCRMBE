@@ -445,11 +445,26 @@ const sendMessage = async ({
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    const detail = data?.error?.message || res.statusText || 'Graph API error';
-    throw new AppError(
-      `WhatsApp send failed: ${detail}`,
-      res.status >= 400 && res.status < 600 ? 502 : 502
-    );
+    const metaError = data?.error || {};
+    const detail = metaError.message || res.statusText || 'Graph API error';
+    // Log the full Meta error so the real cause (unapproved template, param-count
+    // mismatch, policy block, expired token, ...) is visible. AppError short-circuits
+    // the global handler's logging, so without this the reason is silently swallowed.
+    log.error('[WhatsApp send rejected by Meta]', {
+      to,
+      type,
+      httpStatus: res.status,
+      code: metaError.code,
+      subcode: metaError.error_subcode,
+      detail,
+      metaError,
+    });
+    // Meta 5xx = Graph API is actually down → 502 (gateway) is correct.
+    // Meta 4xx = our request/content/policy problem → surface as 422 so the client sees
+    // the real error instead of an origin 5xx (which Cloudflare renders as its own
+    // scary "502 Bad Gateway" page).
+    const statusCode = res.status >= 500 ? 502 : 422;
+    throw new AppError(`WhatsApp send failed: ${detail}`, statusCode);
   }
 
   const wamid = data?.messages?.[0]?.id;
